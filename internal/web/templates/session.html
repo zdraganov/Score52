@@ -1,6 +1,6 @@
 {{define "content"}}
 {{$s := .Data.S}}
-<h1>{{$s.Name}} <span class="muted small">{{$s.KindName}} · {{$s.Movement.Tables}} маси · {{$s.Movement.Rounds}} рунда × {{$s.BoardsPerRound}} · {{$s.MethodName}}</span></h1>
+<h1>{{$s.Name}} <span class="muted small">{{$s.KindName}}{{with $s.Movement.Sections}} · {{len .}} секции{{end}} · {{$s.Movement.Tables}} маси · {{$s.Movement.Rounds}} рунда × {{$s.BoardsPerRound}} · {{$s.MethodName}}</span></h1>
 <p class="actions">
   <a class="button" href="/e/{{.EventID}}/s/{{$s.Slot}}/results">Класиране</a>
   <a class="button secondary" href="/e/{{.EventID}}/s/{{$s.Slot}}/usebio.xml">USEBIO за bridge.bg</a>
@@ -16,22 +16,25 @@
 </section>
 <section class="card">
 <h2>Разпределение</h2>
-<p class="muted small">Под всяка маса: раздаванията ѝ, а след рунда – къде отиват{{if $s.Movement.Shared}}; поделен комплект: масите си подават раздаванията, всяка започва от различно{{end}}.</p>
+<p class="muted small">Под всяка маса: раздаванията ѝ, а след рунда – къде отиват{{if $s.Movement.Shared}}; поделен комплект: масите си подават раздаванията, всяка започва от различно{{end}}.{{if $s.Movement.Sections}} Секциите играят едни и същи раздавания (всяка свое копие) и се сравняват заедно.{{end}}</p>
+{{range .Data.Plans}}
+{{if .Letter}}<h3>Секция {{.Letter}}</h3>{{end}}
 <div class="scroll">
 <table class="tbl plan">
-<thead><tr><th>Рунд</th>{{range $t, $_ := index .Data.Grid 0}}<th>Маса {{inc $t}}</th>{{end}}</tr></thead>
+<thead><tr><th>Рунд</th>{{range .Tables}}<th>Маса {{.}}</th>{{end}}</tr></thead>
 <tbody>
-{{range $r, $row := .Data.Grid}}<tr><th>{{inc $r}}</th>
+{{range $r, $row := .Grid}}<tr><th>{{inc $r}}</th>
 {{range $row}}<td>{{if .Empty}}<span class="muted">–</span>{{else}}<b>{{.NS}}</b>–<b>{{.EW}}</b>{{if .SitOut}} <span class="muted">(почива)</span>{{end}}<br><span class="muted">{{.First}}–{{.Last}}</span>{{with .Note}}<br><span class="share">{{.}}</span>{{end}}{{with .Next}}<br><span class="next">{{.}}</span>{{end}}{{end}}</td>{{end}}
 </tr>{{end}}
 </tbody>
 </table>
 </div>
+{{end}}
 </section>
 <section class="card">
 <h2>Двойки</h2>
 <table class="tbl">
-<tbody>{{range $i, $id := $s.Seating}}{{if $id}}<tr><td class="num">{{inc $i}}</td><td>{{index $s.Pairs (inc $i)}}</td></tr>{{end}}{{end}}</tbody>
+<tbody>{{range $i, $id := $s.Seating}}{{if $id}}<tr><td class="num">{{$s.Movement.Label (inc $i)}}</td><td>{{index $s.Pairs (inc $i)}}</td></tr>{{end}}{{end}}</tbody>
 </table>
 </section>
 {{end}}

@@ -132,7 +132,13 @@ func export(st *store.Store, event, stage string, k int) (usebio.PairsEvent, str
 			Tied: i > 0 && row.Rank == sr.Rows[i-1].Rank || i+1 < len(sr.Rows) && row.Rank == sr.Rows[i+1].Rank}
 		// a two-winner Mitchell's line, when the numbers are that session's
 		if n := pr.Number; withBoards && d.Movement.TwoFields && d.Seating[n-1] == row.Entry {
-			pr.Direction = map[bool]string{true: "NS", false: "EW"}[n <= d.Movement.Tables]
+			ns, _ := d.Movement.Lines()
+			pr.Direction = "EW"
+			for _, x := range ns {
+				if x == n {
+					pr.Direction = "NS"
+				}
+			}
 		}
 		if withSession && row.PerSession[k-1] != nil {
 			pr.Session = &usebio.SessionResult{Percent: *row.PerSession[k-1], Boards: row.SessionBoards[k-1]}

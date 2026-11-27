@@ -13,7 +13,7 @@
 <table class="tbl rank">
 <thead><tr><th>Място</th><th>№</th><th>Двойка</th><th class="num">{{if $.Data.MP}}MP{{else}}IMP{{end}}</th>{{if $.Data.MP}}<th class="num">%</th>{{end}}<th class="num">Раздавания</th></tr></thead>
 <tbody>
-{{range $rows}}<tr><td>{{.Place}}{{if .Tied}}={{end}}</td><td>{{.Pair}}</td><td>{{.Names}}</td><td class="num">{{num .Score}}</td>{{if $.Data.MP}}<td class="num"><b>{{pct .Percent}}</b></td>{{end}}<td class="num">{{.Boards}}</td></tr>{{end}}
+{{range $rows}}<tr><td>{{.Place}}{{if .Tied}}={{end}}</td><td>{{.Label}}</td><td>{{.Names}}</td><td class="num">{{num .Score}}</td>{{if $.Data.MP}}<td class="num"><b>{{pct .Percent}}</b></td>{{end}}<td class="num">{{.Boards}}</td></tr>{{end}}
 </tbody>
 </table>
 </section>
