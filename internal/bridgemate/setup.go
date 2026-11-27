@@ -142,7 +142,7 @@ func PairsSetup(name string, date time.Time, sections ...PairsSection) (Setup, e
 				dirs [2]string
 			}{{st.NS, [2]string{"N", "S"}}, {st.EW, [2]string{"E", "W"}}} {
 				pl, ok := ps.Players[side.pair]
-				if !ok || side.pair == m.Phantom {
+				if !ok || m.IsPhantom(side.pair) {
 					continue
 				}
 				for k, p := range pl {

@@ -29,7 +29,7 @@ func key(a, b int) [2]int {
 // Add records a played session: m's pair numbers are seat[i] = the event's pair at movement number i+1.
 func (h History) Add(m movement.Movement, seat []int) {
 	for _, s := range m.Seats {
-		if s.NS == 0 || s.EW == 0 || s.NS == m.Phantom || s.EW == m.Phantom {
+		if s.NS == 0 || s.EW == 0 || m.IsPhantom(s.NS) || m.IsPhantom(s.EW) {
 			continue
 		}
 		h.Met[key(seat[s.NS-1], seat[s.EW-1])]++
@@ -48,7 +48,7 @@ func fields(m movement.Movement) [][]int {
 	all := func(from, to int) []int {
 		var f []int
 		for p := from; p <= to; p++ {
-			if p != m.Phantom {
+			if !m.IsPhantom(p) {
 				f = append(f, p)
 			}
 		}
@@ -101,7 +101,7 @@ func Seat(m movement.Movement, order []int, h History, w Weights, seed uint64) [
 	type edge struct{ a, b int }
 	var meets []edge
 	for _, s := range m.Seats {
-		if s.NS != 0 && s.EW != 0 && s.NS != m.Phantom && s.EW != m.Phantom {
+		if s.NS != 0 && s.EW != 0 && !m.IsPhantom(s.NS) && !m.IsPhantom(s.EW) {
 			meets = append(meets, edge{s.NS - 1, s.EW - 1})
 		}
 	}
@@ -128,7 +128,7 @@ func Seat(m movement.Movement, order []int, h History, w Weights, seed uint64) [
 
 	movable := make([]int, 0, n)
 	for i := 0; i < n; i++ {
-		if i+1 != m.Phantom {
+		if !m.IsPhantom(i + 1) {
 			movable = append(movable, i)
 		}
 	}
@@ -153,7 +153,7 @@ func Seat(m movement.Movement, order []int, h History, w Weights, seed uint64) [
 func Repeats(m movement.Movement, seat []int, h History) int {
 	n := 0
 	for _, s := range m.Seats {
-		if s.NS != 0 && s.EW != 0 && s.NS != m.Phantom && s.EW != m.Phantom && h.Met[key(seat[s.NS-1], seat[s.EW-1])] > 0 {
+		if s.NS != 0 && s.EW != 0 && !m.IsPhantom(s.NS) && !m.IsPhantom(s.EW) && h.Met[key(seat[s.NS-1], seat[s.EW-1])] > 0 {
 			n++
 		}
 	}

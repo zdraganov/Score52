@@ -73,12 +73,17 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
 - **Sections and the deal** (`movement.Layouts`, `Advise`; page "Раздавания"): a large field plays in
   sections A, B…, each a Mitchell of the same rounds on **the same deals** (its own copy), scored across
   the whole field. A Mitchell section of T tables needs T sets, so a section layout needs
-  copies = sections and boards 1..(largest section's tables × boards per round). Layouts are ranked by
-  boards closest to the target, then the most comparisons per board (sections × rounds), then fewer
-  sections, then fewer moves; sections are 7–16 tables. Before the day the TD gives the expected range of
-  pairs and the boards a pair plays, and gets the deals worth making: the cheapest that seats the expected
-  maximum (60 pairs, 26 boards: 2 × boards 1–30, good down to 51 pairs), then larger ones reaching further
-  down. What was dealt is recorded, and the session's layouts keep to it (56 pairs: 2 × 14 tables, 13 × 2).
+  copies = sections and boards 1..(largest section's tables × boards per round), at most **board 32** (the
+  federation's boxes). A pair plays **exactly** the boards set (BBF: fixed, no ±). Each section may have a
+  pair **sitting out** each round. An even section that needs all its rounds plays a **relay-and-stand
+  Mitchell**: tables 1 and 2 share a set (the TD duplicates it), one set rests on a stand, the rest move down a
+  table, EW move up without skipping. Layouts are ranked by the most comparisons per board (sections ×
+  rounds), then fewer sit-outs, fewer duplicated sets, fewer sections and fewer moves; sections are 7–16
+  tables. Before the day the TD gives the expected range of pairs and the boards a pair plays, and gets the
+  deals worth making: 50–60 pairs, 26 boards → 2 × boards 1–30 (50: 13 + 13 tables, a pair sitting out in
+  each). What was dealt is recorded, and the session's layouts keep to it (56 pairs: 2 × 14 tables, 13 × 2).
+  Fewer than 50 at 26 boards needs a section of 17+ tables, i.e. tables sharing sets beyond the relay: not
+  yet (a search shows such movements exist for 14–24 tables within boards 1–32).
   The session's movement is the sections combined (`movement.Combine`): tables and pairs numbered on, shown
   as "B7", boards moving within their section; `Movement.Section(i)` gives a section back for Bridgemate.
 - **Howell** for 8+ pairs comes from a cyclic Room square, so it needs one set of boards and every table

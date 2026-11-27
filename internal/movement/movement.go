@@ -23,7 +23,11 @@ type Kind string
 const (
 	Mitchell     Kind = "mitchell"
 	SkipMitchell Kind = "skip-mitchell"
-	Howell       Kind = "howell"
+	// RelayMitchell: an even number of tables playing all its rounds, without the skip. Tables 1 and 2
+	// share a set every round (the director duplicates it), one set rests on a stand after table T/2+1,
+	// and the other boards move down a table.
+	RelayMitchell Kind = "relay-mitchell"
+	Howell        Kind = "howell"
 	// HowellDuplicated is a round robin where every table plays the same board set in a round:
 	// it needs as many copies of the boards as tables (a dealing machine), and exists for any size.
 	HowellDuplicated Kind = "howell-duplicated"
@@ -49,7 +53,9 @@ type Movement struct {
 	Shared bool
 	// Phantom is the pair id that stands for a sit-out (an odd number of pairs), 0 if none.
 	Phantom int
-	Seats   []Seat
+	// Phantoms: a combined movement's sit-outs, one per section that has one
+	Phantoms []int `json:",omitempty"`
+	Seats    []Seat
 	// Sections: a session played in sections A, B... on the same deals (Combine): each its own movement,
 	// its tables and pairs numbered on from the one before, its boards a copy of the same sets. nil for one.
 	Sections []SectionInfo `json:",omitempty"`
@@ -88,7 +94,7 @@ func (m Movement) Round(r int) []Seat {
 func (m Movement) Met() map[[2]int]bool {
 	met := map[[2]int]bool{}
 	for _, s := range m.Seats {
-		if s.NS == 0 || s.EW == 0 || s.NS == m.Phantom || s.EW == m.Phantom {
+		if s.NS == 0 || s.EW == 0 || m.IsPhantom(s.NS) || m.IsPhantom(s.EW) {
 			continue
 		}
 		met[key(s.NS, s.EW)] = true
@@ -101,6 +107,22 @@ func key(a, b int) [2]int {
 		a, b = b, a
 	}
 	return [2]int{a, b}
+}
+
+// IsPhantom: p is a sit-out, not a pair.
+func (m Movement) IsPhantom(p int) bool {
+	if p == 0 {
+		return false
+	}
+	if p == m.Phantom {
+		return true
+	}
+	for _, x := range m.Phantoms {
+		if x == p {
+			return true
+		}
+	}
+	return false
 }
 
 // sectionOf is the section index of a table (0 without sections).
@@ -137,17 +159,17 @@ func (m Movement) TableLabel(t int) string {
 func (m Movement) Lines() (ns, ew []int) {
 	if !m.TwoFields {
 		for p := 1; p <= m.Pairs; p++ {
-			if p != m.Phantom {
+			if !m.IsPhantom(p) {
 				ns = append(ns, p)
 			}
 		}
 		return ns, nil
 	}
 	for _, s := range m.Round(1) {
-		if s.NS != 0 && s.NS != m.Phantom {
+		if s.NS != 0 && !m.IsPhantom(s.NS) {
 			ns = append(ns, s.NS)
 		}
-		if s.EW != 0 && s.EW != m.Phantom {
+		if s.EW != 0 && !m.IsPhantom(s.EW) {
 			ew = append(ew, s.EW)
 		}
 	}
@@ -158,7 +180,7 @@ func (m Movement) Lines() (ns, ew []int) {
 
 // Combine joins section movements, all of the same rounds, into one session movement on the same deals:
 // tables and pairs numbered on section after section, board sets as they are (each section has its own
-// copy). At most one section may have a phantom.
+// copy). Each section may have a sit-out.
 func Combine(letters []string, ms ...Movement) (Movement, error) {
 	if len(ms) == 0 || len(letters) != len(ms) {
 		return Movement{}, fmt.Errorf("a letter for each section")
@@ -169,10 +191,7 @@ func Combine(letters []string, ms ...Movement) (Movement, error) {
 			return Movement{}, fmt.Errorf("section %s plays %d rounds, %s %d", letters[i], m.Rounds, letters[0], c.Rounds)
 		}
 		if m.Phantom != 0 {
-			if c.Phantom != 0 {
-				return Movement{}, fmt.Errorf("two sections with a sit-out")
-			}
-			c.Phantom = m.Phantom + c.Pairs
+			c.Phantoms = append(c.Phantoms, m.Phantom+c.Pairs)
 		}
 		c.Sections = append(c.Sections, SectionInfo{Letter: letters[i], FirstTable: c.Tables + 1, Tables: m.Tables,
 			FirstPair: c.Pairs + 1, Pairs: m.Pairs, Kind: m.Kind})
@@ -204,8 +223,10 @@ func (m Movement) Section(i int) Movement {
 	x := m.Sections[i]
 	out := Movement{Kind: x.Kind, Pairs: x.Pairs, Tables: x.Tables, Rounds: m.Rounds, Sets: m.Sets,
 		TwoFields: m.TwoFields, Duplicated: m.Duplicated, Shared: m.Shared}
-	if m.Phantom >= x.FirstPair && m.Phantom < x.FirstPair+x.Pairs {
-		out.Phantom = m.Phantom - x.FirstPair + 1
+	for p := x.FirstPair; p < x.FirstPair+x.Pairs; p++ {
+		if m.IsPhantom(p) {
+			out.Phantom = p - x.FirstPair + 1
+		}
 	}
 	local := func(p int) int {
 		if p == 0 {

@@ -23,11 +23,11 @@ func TestDealAndSections(t *testing.T) {
 	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
 
 	_, ev := c.post("/events", url.Values{"title": {"Голям турнир"}, "date": {"2026-11-30"}})
-	page, _ := c.get(ev + "/deal?from=50&to=60&boards=26&tol=2")
-	if !strings.Contains(page, "2 × раздавания 1–30") || !strings.Contains(page, "стигат за 51–60 двойки") {
+	page, _ := c.get(ev + "/deal?from=50&to=60&boards=26")
+	if !strings.Contains(page, "2 × раздавания 1–30") || !strings.Contains(page, "стигат за 50–60 двойки") || strings.Contains(page, `name="tol"`) {
 		t.Fatalf("deal options:\n%s", page[strings.Index(page, "<main>"):])
 	}
-	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "tol": {"2"}, "copies": {"2"}, "per_copy": {"30"}})
+	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "copies": {"2"}, "per_copy": {"30"}})
 
 	for i := 1; i <= 56; i++ {
 		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprintf("Играч %dа", i)}, "name2": {fmt.Sprintf("Играч %dб", i)}})
@@ -68,5 +68,30 @@ func TestDealAndSections(t *testing.T) {
 	res, _ := c.get(sess + "/results")
 	if !strings.Contains(res, "<td>B") || !strings.Contains(res, "Север – Юг") {
 		t.Error("results don't show section labels or lines")
+	}
+}
+
+// 50 pairs: 13 + 13 tables with a pair sitting out in each section; the plan shows both.
+func TestSectionsWithSitOuts(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	_, ev := c.post("/events", url.Values{"title": {"50 двойки"}, "date": {"2026-11-30"}})
+	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "copies": {"2"}, "per_copy": {"30"}})
+	for i := 1; i <= 50; i++ {
+		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("А", i)}, "name2": {fmt.Sprint("Б", i)}})
+	}
+	page, _ := c.get(ev + "/new-session")
+	if !strings.Contains(page, "A: 13 маси (една двойка почива) · B: 13 маси (една двойка почива)") {
+		t.Fatalf("50 pairs:\n%s", page[strings.Index(page, "<main>"):min(len(page), strings.Index(page, "<main>")+2500)])
+	}
+	plan, _ := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"13,13"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
+	if strings.Count(plan, "(почива)") != 26 { // a sit-out at one table of each section, every round
+		t.Errorf("%d sit-outs in the plan, want 26", strings.Count(plan, "(почива)"))
 	}
 }

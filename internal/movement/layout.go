@@ -20,6 +20,9 @@ type Layout struct {
 	Copies         int // one per section
 	Played         int // times each board is played across the field: its comparisons
 	Complete       bool
+	// Duplicates: sets to copy once more for relay-and-stand sections (tables 1 and 2 share one)
+	Duplicates int
+	SitOuts    int // sections with a pair sitting out each round
 }
 
 // Section is one section of a layout.
@@ -30,8 +33,9 @@ type Section struct {
 	Kind   Kind
 }
 
-// Deal is the boards to deal: Copies copies of boards 1..BoardsPerCopy.
-func (l Layout) Deal() int { return l.Copies * l.BoardsPerCopy }
+// Deal is the boards to deal: Copies copies of boards 1..BoardsPerCopy, and a duplicate of a set for
+// each relay section.
+func (l Layout) Deal() int { return l.Copies*l.BoardsPerCopy + l.Duplicates*l.BoardsPerRound }
 
 func (l Layout) String() string {
 	var s string
@@ -45,11 +49,12 @@ func (l Layout) String() string {
 		s, l.Rounds, l.BoardsPerRound, l.Boards, l.Copies, l.BoardsPerCopy, l.Played)
 }
 
-// Section sizes a layout keeps to: smaller ones meet too few opponents, larger ones play too few of
-// the field's deals against each other... and need more boards in circulation.
+// Section sizes a layout keeps to: smaller ones meet too few opponents. A section needs a set per table,
+// and boards go up to MaxBoard (the federation's boxes are 1-32), which bounds its size too.
 const (
 	MinSectionTables = 7
 	MaxSectionTables = 16
+	MaxBoard         = 32
 )
 
 // Layouts lists the ways to seat `pairs` pairs for about `boards` boards (within ±tol), best first: the
@@ -57,21 +62,24 @@ const (
 // comparisons: sections × rounds); then the fewest sections; then fewer moves. maxDeal > 0 keeps to
 // layouts whose boards per copy fit what was dealt, and maxCopies > 0 to that many copies.
 func Layouts(pairs, boards, tol, maxDeal, maxCopies int) []Layout {
-	tables := (pairs + 1) / 2
+	need := (pairs + 1) / 2
 	var out []Layout
-	for k := 1; k <= tables/MinSectionTables+1 && k <= 26; k++ {
+	for k := 1; k <= need/MinSectionTables+1 && k <= 26; k++ {
 		if maxCopies > 0 && k > maxCopies {
 			break
 		}
-		sizes := split(tables, k)
-		if sizes[k-1] < MinSectionTables && k > 1 || sizes[0] > MaxSectionTables {
-			continue
-		}
-		for bpr := 2; bpr <= 5; bpr++ {
-			for r := (boards - tol + bpr - 1) / bpr; r*bpr <= boards+tol; r++ {
-				l, ok := layout(pairs, sizes, r, bpr)
-				if ok && (maxDeal == 0 || l.BoardsPerCopy <= maxDeal) {
-					out = append(out, l)
+		// up to one pair sitting out in each section: the tables may run to (pairs + k) / 2
+		for tables := need; 2*tables-pairs <= k; tables++ {
+			sizes := split(tables, k)
+			if sizes[k-1] < MinSectionTables && k > 1 || sizes[0] > MaxSectionTables {
+				continue
+			}
+			for bpr := 2; bpr <= 5; bpr++ {
+				for r := (boards - tol + bpr - 1) / bpr; r*bpr <= boards+tol; r++ {
+					l, ok := layout(pairs, sizes, r, bpr)
+					if ok && l.BoardsPerCopy <= MaxBoard && (maxDeal == 0 || l.BoardsPerCopy <= maxDeal) {
+						out = append(out, l)
+					}
 				}
 			}
 		}
@@ -83,6 +91,12 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies int) []Layout {
 		}
 		if a.Played != b.Played {
 			return a.Played > b.Played
+		}
+		if a.SitOuts != b.SitOuts {
+			return a.SitOuts < b.SitOuts
+		}
+		if a.Duplicates != b.Duplicates {
+			return a.Duplicates < b.Duplicates
 		}
 		if len(a.Sections) != len(b.Sections) {
 			return len(a.Sections) < len(b.Sections)
@@ -109,23 +123,35 @@ func split(n, k int) []int {
 
 func layout(pairs int, sizes []int, rounds, bpr int) (Layout, bool) {
 	l := Layout{Rounds: rounds, BoardsPerRound: bpr, Boards: rounds * bpr, Copies: len(sizes), Complete: true}
-	left := pairs
+	out := 2*sum(sizes) - pairs // sit-outs: the first sections get one each
+	if out < 0 || out > len(sizes) {
+		return l, false
+	}
 	for i, t := range sizes {
+		// odd tables: a Mitchell, every round; even: skip Mitchell up to T-1 rounds, relay and stand for all T
 		kind, max := Mitchell, t
-		if t%2 == 0 {
+		switch {
+		case t%2 == 1:
+		case rounds <= t-1:
 			kind, max = SkipMitchell, t-1
+		default:
+			kind = RelayMitchell
+			l.Duplicates++
 		}
 		if t < 3 || rounds > max {
 			return l, false
 		}
 		l.Complete = l.Complete && rounds == max
-		p := min(2*t, left-2*sum(sizes[i+1:])) // the odd pair out sits out in the first section
-		left -= p
+		p := 2 * t
+		if i < out {
+			p--
+			l.SitOuts++
+		}
 		l.Sections = append(l.Sections, Section{Letter: string(rune('A' + i)), Tables: t, Pairs: p, Kind: kind})
 		l.BoardsPerCopy = max2(l.BoardsPerCopy, t*bpr)
 	}
 	l.Played = len(sizes) * rounds
-	return l, left == 0
+	return l, true
 }
 
 func sum(v []int) int {
@@ -217,7 +243,7 @@ func (l Layout) Build() (Movement, error) {
 	var ms []Movement
 	var letters []string
 	for _, x := range l.Sections {
-		m, err := NewMitchell(x.Tables, l.Rounds, MitchellOptions{})
+		m, err := NewMitchell(x.Tables, l.Rounds, MitchellOptions{Relay: x.Kind == RelayMitchell})
 		if err != nil {
 			return Movement{}, fmt.Errorf("section %s: %w", x.Letter, err)
 		}

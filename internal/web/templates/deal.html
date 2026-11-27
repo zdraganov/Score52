@@ -4,31 +4,30 @@
 <form method="get" class="inline card">
   <label>Очаквани двойки от <input type="number" name="from" value="{{if $d.From}}{{$d.From}}{{end}}" min="4" max="400" class="num" required></label>
   <label>до <input type="number" name="to" value="{{if $d.To}}{{$d.To}}{{end}}" min="4" max="400" class="num" required></label>
-  <label>Раздавания на двойка <input type="number" name="boards" value="{{$d.Boards}}" min="4" max="127" class="num"></label>
-  <label>± <input type="number" name="tol" value="{{$d.Tol}}" min="0" max="8" class="num"></label>
+  <label>Раздавания на двойка <input type="number" name="boards" value="{{$d.Boards}}" min="4" max="32" class="num"></label>
   <button class="secondary">Покажи</button>
 </form>
 {{if $d.PerCopy}}<p class="alert">Записано: {{$d.Copies}} {{if eq $d.Copies 1}}копие{{else}}копия{{end}} на раздавания 1–{{$d.PerCopy}} ({{mul $d.Copies $d.PerCopy}} раздавания). Движенията на сесиите се избират в тези граници.</p>{{end}}
 {{if .Data.Asked}}
 {{with .Data.Options}}
-<p class="muted">Всяка секция е Мичъл и играе същите раздавания като останалите – своето копие, сравнява се с цялото поле. Колкото повече раздавания се раздадат, толкова по-малко двойки покрива вариантът. Първият е най-евтиният за очаквания максимум.</p>
+<p class="muted">Всяка секция е Мичъл и играе същите раздавания като останалите – своето копие, сравнява се с цялото поле. Раздаванията са до 32. В секция може една двойка да почива всеки рунд. Първият вариант е най-евтиният за очаквания максимум.</p>
 <div class="options">
 {{range $i, $o := .}}
 <form method="post" class="card option{{if eq $i 0}} best{{end}}">
   <input type="hidden" name="t" value="{{$.Token}}">
   <input type="hidden" name="from" value="{{$d.From}}"><input type="hidden" name="to" value="{{$d.To}}">
-  <input type="hidden" name="boards" value="{{$d.Boards}}"><input type="hidden" name="tol" value="{{$d.Tol}}">
+  <input type="hidden" name="boards" value="{{$d.Boards}}">
   <input type="hidden" name="copies" value="{{$o.Copies}}"><input type="hidden" name="per_copy" value="{{$o.BoardsPerCopy}}">
   <h3>{{$o.Copies}} × раздавания 1–{{$o.BoardsPerCopy}}</h3>
   <p class="big">{{$o.Total}} раздавания</p>
   <p class="muted">стигат за {{$o.Down}}–{{$d.To}} двойки</p>
   <table class="tbl small">
-    {{range $o.Rows}}<tr><td class="num">{{.Pairs}}</td><td>{{with .Layout}}{{range $k, $x := .Sections}}{{if $k}} + {{end}}{{$x.Tables}}{{end}} маси · {{.Rounds}}×{{.BoardsPerRound}} = {{.Boards}}{{else}}<span class="muted">не стига</span>{{end}}</td></tr>{{end}}
+    {{range $o.Rows}}<tr><td class="num">{{.Pairs}}</td><td>{{with .Layout}}{{range $k, $x := .Sections}}{{if $k}} + {{end}}{{$x.Tables}}{{end}} маси · {{.Rounds}}×{{.BoardsPerRound}}{{if .SitOuts}} · <span title="по една двойка почива всеки рунд">{{.SitOuts}} почиват</span>{{end}}{{if .Duplicates}} · +{{.Duplicates}} дубл.{{end}}{{else}}<span class="muted">няма движение</span>{{end}}</td></tr>{{end}}
   </table>
   <button>Раздадено така</button>
 </form>
 {{end}}
 </div>
-{{else}}<p class="alert">Няма вариант за {{$d.From}}–{{$d.To}} двойки и {{$d.Boards}}±{{$d.Tol}} раздавания. Разширете обхвата.</p>{{end}}
+{{else}}<p class="alert">Няма вариант за {{$d.From}}–{{$d.To}} двойки и {{$d.Boards}} раздавания.</p>{{end}}
 {{end}}
 {{end}}

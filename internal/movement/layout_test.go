@@ -29,25 +29,79 @@ func TestLayouts(t *testing.T) {
 }
 
 func TestAdvise(t *testing.T) {
-	ds := Advise(40, 60, 26, 2)
-	if len(ds) < 2 {
+	// fixed 26 boards: 2 × boards 1-30 seats 50-60 pairs (50: 13 + 13 tables, a pair sitting out in each)
+	ds := Advise(40, 60, 26, 0)
+	if len(ds) == 0 || ds[0].Copies != 2 || ds[0].BoardsPerCopy != 30 || ds[0].Down != 50 {
 		t.Fatalf("40-60 pairs: %+v", ds)
 	}
-	// the smallest seats the expected 60, and down to 51 (2 × 13 tables, one pair sitting out): 2 × boards 1-30
-	if d := ds[0]; d.Copies != 2 || d.BoardsPerCopy != 30 || d.Down != 51 {
-		t.Errorf("first deal: %d × %d down to %d", d.Copies, d.BoardsPerCopy, d.Down)
+	for p, l := range ds[0].ByPairs {
+		if l.Boards != 26 || l.BoardsPerCopy > 30 {
+			t.Errorf("%d pairs: %s", p, l)
+		}
 	}
-	// the last covers the whole range, with more boards
-	last := ds[len(ds)-1]
-	if last.Down != 40 || last.Total() <= ds[0].Total() {
-		t.Errorf("last deal: %d × %d down to %d", last.Copies, last.BoardsPerCopy, last.Down)
+	// 40-49 need sections over 16 tables or boards over 32: not offered
+	if _, ok := ds[0].ByPairs[44]; ok {
+		t.Error("44 pairs seated")
 	}
-	for _, d := range ds {
-		for p, l := range d.ByPairs {
-			if l.Boards < 24 || l.Boards > 28 || l.BoardsPerCopy > d.BoardsPerCopy || l.Copies > d.Copies {
-				t.Errorf("%d × %d, %d pairs: %s", d.Copies, d.BoardsPerCopy, p, l)
+	// with ±2 boards the same deal reaches further down
+	if wide := Advise(40, 60, 26, 2); wide[0].Down >= 50 {
+		t.Errorf("±2: down to %d", wide[0].Down)
+	}
+}
+
+func TestSitOutsPerSection(t *testing.T) {
+	l := Layouts(50, 26, 0, 0, 0)[0]
+	if l.SitOuts != 2 || l.Sections[0].Pairs != 25 || l.Sections[1].Pairs != 25 {
+		t.Fatalf("50 pairs: %s, %+v", l, l.Sections)
+	}
+	m, err := l.Build()
+	if err != nil || len(m.Phantoms) != 2 || m.Label(m.Phantoms[1])[0] != 'B' {
+		t.Fatalf("50 pairs: %v %v", err, m.Phantoms)
+	}
+	ns, ew := m.Lines()
+	if len(ns)+len(ew) != 50 {
+		t.Errorf("lines hold %d pairs", len(ns)+len(ew))
+	}
+	if b := m.Section(1); b.Phantom == 0 || b.Validate() != nil {
+		t.Errorf("section B alone: phantom %d", b.Phantom)
+	}
+}
+
+func TestRelayMitchell(t *testing.T) {
+	for tables := 4; tables <= 30; tables += 2 {
+		m, err := NewMitchell(tables, tables, MitchellOptions{Relay: true})
+		if err != nil {
+			t.Fatalf("%d tables: %v", tables, err)
+		}
+		if got := len(m.Met()); got != tables*tables {
+			t.Errorf("%d tables: %d meetings, want %d", tables, got, tables*tables)
+		}
+		// tables 1 and 2 share a set every round; one set rests; the rest move down a table
+		down, stand := 0, 0
+		for r := 1; r <= m.Rounds; r++ {
+			if m.SharedWith(r, 1) != 2 {
+				t.Fatalf("%d tables, round %d: table 1 shares with %d", tables, r, m.SharedWith(r, 1))
+			}
+			if r == m.Rounds {
+				continue
+			}
+			for tb := 2; tb <= tables; tb++ {
+				switch next := m.Next(r, tb); {
+				case len(next) == 0:
+					stand++
+				case next[0] == tb-1 || tb == 2 && next[0] == 1:
+					down++
+				}
 			}
 		}
+		if stand != m.Rounds-1 {
+			t.Errorf("%d tables: %d sets on the stand over the rounds, want one a round", tables, stand)
+		}
+	}
+	// 12 tables, 24 boards = 12 rounds × 2: a relay section, one duplicated set
+	l := Layouts(24, 24, 0, 0, 0)[0]
+	if l.Sections[0].Kind != RelayMitchell || l.Duplicates != 1 || l.Deal() != 26 {
+		t.Errorf("24 pairs, 24 boards: %s %+v, deal %d", l, l.Sections, l.Deal())
 	}
 }
 
@@ -96,7 +150,7 @@ func TestBuildSections(t *testing.T) {
 	}
 	// 57 pairs: the sit-out is in section A only
 	m, err = Layouts(57, 26, 2, 0, 0)[0].Build()
-	if err != nil || m.Phantom == 0 || m.Label(m.Phantom)[0] != 'A' {
-		t.Errorf("57 pairs: %v, phantom %d", err, m.Phantom)
+	if err != nil || len(m.Phantoms) != 1 || m.Label(m.Phantoms[0])[0] != 'A' {
+		t.Errorf("57 pairs: %v, sit-outs %v", err, m.Phantoms)
 	}
 }
