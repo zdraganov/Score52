@@ -118,6 +118,9 @@ func export(st *store.Store, event, stage string, k int) (usebio.PairsEvent, str
 		string(pairs.MethodButler): usebio.Butler}[cur.Scoring]
 	ev.Date, _ = time.Parse("2006-01-02", must(st.Meta(store.MetaDate)))
 	ev.Title = event + " – " + stageName(stage)
+	if stage != "" {
+		ev.CarryWeight = fraction
+	}
 	if withSession {
 		ev.Title = event + " – " + cur.Name
 	}
@@ -136,7 +139,7 @@ func export(st *store.Store, event, stage string, k int) (usebio.PairsEvent, str
 		}
 		if stage != "" && fraction > 0 {
 			carried := fraction * row.Total.Carry
-			pr.Carry = &usebio.CarryParts{Carried: carried, Own: row.Total.Total - carried}
+			pr.Carry = &usebio.CarryParts{Carried: carried, Own: row.Total.Total - carried, Qualifying: row.Total.Carry, Final: row.Total.Score}
 		}
 		for _, p := range byID[row.Entry].Players {
 			pr.Players = append(pr.Players, usebio.Player{Name: p.Name, FederationID: p.FederationID})

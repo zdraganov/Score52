@@ -215,6 +215,13 @@ func TestStagesFlow(t *testing.T) {
 			rows[0]["TotalScoreMP"] != fmt.Sprintf("%.2f", w.Total.Total) || rows[0]["NrBoardsSession"] != nil {
 			t.Errorf("site reads final A's winner as %v", rows[0])
 		}
+		// with bridge.bg#244 the site shows the plain results under their weights
+		if siteKnows("CARRY_WEIGHT") {
+			if rows[0]["CarryWeight"] != "0.25" || rows[0]["QualifyingPercentage"] != fmt.Sprintf("%.2f", w.Total.Carry) ||
+				rows[0]["FinalPercentage"] != fmt.Sprintf("%.2f", w.Total.Score) {
+				t.Errorf("site reads final A's plain results as %v", rows[0])
+			}
+		}
 	}
 
 	// planning again is refused once a final has a session
@@ -263,4 +270,14 @@ func siteRanking(t *testing.T, xml string) []map[string]any {
 		t.Fatalf("site parser: %v\n%s", err, out)
 	}
 	return rows
+}
+
+// siteKnows: the bridge.bg checkout's USEBIO reader knows a tag.
+func siteKnows(tag string) bool {
+	site := os.Getenv("BRIDGEBG_DIR")
+	if site == "" {
+		site = "../../../bridge.bg"
+	}
+	src, err := os.ReadFile(filepath.Join(site, "next/src/Results/UsebioParser.php"))
+	return err == nil && strings.Contains(string(src), tag)
 }
