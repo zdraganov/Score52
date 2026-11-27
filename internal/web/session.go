@@ -77,8 +77,8 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 		target, tol = (lo+hi)/2, (hi-lo)/2
 	}
 	var layouts []movement.Layout
-	if len(entries) >= 4*movement.MinSectionTables {
-		layouts = movement.Layouts(len(entries), target, tol, dl.PerCopy, dl.Copies)
+	if len(entries) >= 2*movement.MinSectionTables {
+		layouts = movement.Layouts(len(entries), target, tol, 0, max(dl.Copies, 0), max(dl.Sessions, 1))
 		if len(layouts) > 4 {
 			layouts = layouts[:4]
 		}
@@ -95,6 +95,14 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 		"Stage": stage, "StageName": stageName(stage), "Number": len(earlier) + 1, "Method": method, "Mixed": len(earlier) > 0, "Copies": copies,
 		"Layouts": layouts, "Deal": dl}
 	s.render(w, "new-session", p)
+}
+
+func sumPairs(l movement.Layout) int {
+	n := 0
+	for _, x := range l.Sections {
+		n += x.Pairs
+	}
+	return n
 }
 
 // buildMovement makes the movement an option names, for `pairs` pairs (an odd number gets a phantom).
@@ -147,14 +155,13 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var m movement.Movement
 	if r.PostFormValue("kind") == "sections" {
-		var sizes []int
-		for _, f := range strings.Split(r.PostFormValue("sections"), ",") {
-			n, _ := strconv.Atoi(f)
-			sizes = append(sizes, n)
-		}
 		var l movement.Layout
-		if l, err = movement.LayoutOf(len(order), sizes, rounds, bpr); err == nil {
-			m, err = l.Build()
+		if l, err = movement.LayoutOf(r.PostFormValue("sections"), rounds, bpr); err == nil {
+			if n := sumPairs(l); n != len(order) {
+				err = fmt.Errorf("the layout seats %d pairs, there are %d", n, len(order))
+			} else {
+				m, err = l.Build()
+			}
 		}
 	} else {
 		m, err = buildMovement(movement.Kind(r.PostFormValue("kind")), len(order), tables, rounds)

@@ -36,20 +36,19 @@ func NewMitchell(tables, rounds int, opt MitchellOptions) (Movement, error) {
 	}
 	m := Movement{Kind: kind, Pairs: 2 * tables, Tables: tables, Rounds: rounds, Sets: tables, TwoFields: len(opt.ArrowSwitch) == 0,
 		Shared: kind == RelayMitchell}
-	// a table's column: it plays set column + round. Plain: the table itself. Relay and stand: tables 1
-	// and 2 have the same column (they share a set), the one after table T/2+1 is nobody's (the stand),
-	// and each table's column is one above the table before: boards move down one table. Every pair then
-	// plays every set once at most (checked by Validate).
+	// a table's column: it plays set column + round. Plain: the table itself. Relay and stand (the
+	// classic): the first and the last table have the same column (they share a set), the column between
+	// tables T/2 and T/2+1 is nobody's (the stand in the middle of the room), and each table's column is
+	// one above the table before: boards move down one table, through the stand. Every pair then plays
+	// every set once at most (checked by Validate).
 	col := func(t int) int {
 		switch {
-		case kind != RelayMitchell:
+		case kind != RelayMitchell || t < tables/2:
 			return t
-		case t == 0:
+		case t == tables-1:
 			return 0
-		case t <= tables/2:
-			return t - 1
 		default:
-			return t
+			return t + 1
 		}
 	}
 	for r := 0; r < rounds; r++ {

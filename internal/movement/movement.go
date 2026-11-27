@@ -23,9 +23,9 @@ type Kind string
 const (
 	Mitchell     Kind = "mitchell"
 	SkipMitchell Kind = "skip-mitchell"
-	// RelayMitchell: an even number of tables playing all its rounds, without the skip. Tables 1 and 2
-	// share a set every round (the director duplicates it), one set rests on a stand after table T/2+1,
-	// and the other boards move down a table.
+	// RelayMitchell: an even number of tables playing all its rounds, without the skip. The first and the
+	// last table share a set every round (the director duplicates it), one set rests on a stand between
+	// tables T/2 and T/2+1, and the other boards move down a table.
 	RelayMitchell Kind = "relay-mitchell"
 	Howell        Kind = "howell"
 	// HowellDuplicated is a round robin where every table plays the same board set in a round:
@@ -309,7 +309,7 @@ func (m Movement) Validate() error {
 				return fmt.Errorf("round %d: pair %d seated twice", s.Round, p)
 			}
 			seated[rp{s.Round, p}] = true
-			if played[ps{p, s.Set}] {
+			if played[ps{p, s.Set}] && !m.IsPhantom(p) { // nobody plays at a sit-out's table
 				return fmt.Errorf("pair %d plays set %d twice (round %d)", p, s.Set, s.Round)
 			}
 			played[ps{p, s.Set}] = true

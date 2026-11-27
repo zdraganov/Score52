@@ -23,21 +23,21 @@ func TestDealAndSections(t *testing.T) {
 	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
 
 	_, ev := c.post("/events", url.Values{"title": {"Голям турнир"}, "date": {"2026-11-30"}})
-	page, _ := c.get(ev + "/deal?from=50&to=60&boards=26")
-	if !strings.Contains(page, "2 × раздавания 1–30") || !strings.Contains(page, "стигат за 50–60 двойки") || strings.Contains(page, `name="tol"`) {
+	page, _ := c.get(ev + "/deal?from=50&to=60&boards=26&sessions=1")
+	if !strings.Contains(page, "2 кутии 1–32") || !strings.Contains(page, "стига за 50–60 двойки") || strings.Contains(page, `name="tol"`) {
 		t.Fatalf("deal options:\n%s", page[strings.Index(page, "<main>"):])
 	}
-	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "copies": {"2"}, "per_copy": {"30"}})
+	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "sessions": {"1"}, "copies": {"2"}, "per_copy": {"32"}})
 
 	for i := 1; i <= 56; i++ {
 		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprintf("Играч %dа", i)}, "name2": {fmt.Sprintf("Играч %dб", i)}})
 	}
 	page, _ = c.get(ev + "/new-session")
-	if !strings.Contains(page, "На секции") || !strings.Contains(page, "A: 14 маси · B: 14 маси") || !strings.Contains(page, "2 × раздавания 1–28") {
+	if !strings.Contains(page, "Препоръчани движения") || !strings.Contains(page, "A: Мичъл 14 маси · B: Мичъл 14 маси") || !strings.Contains(page, "2 кутии 1–28") {
 		t.Fatalf("new session:\n%s", page[strings.Index(page, "<main>"):min(len(page), strings.Index(page, "<main>")+3000)])
 	}
-	m := regexp.MustCompile(`name="sections" value="([\d,]+)"[\s\S]*?name="rounds" value="(\d+)"[\s\S]*?name="bpr" value="(\d+)"`).FindStringSubmatch(page)
-	if m[1] != "14,14" || m[2] != "13" || m[3] != "2" {
+	m := regexp.MustCompile(`name="sections" value="([\w/,]+)"[\s\S]*?name="rounds" value="(\d+)"[\s\S]*?name="bpr" value="(\d+)"`).FindStringSubmatch(page)
+	if m[1] != "M14/28,M14/28" || m[2] != "13" || m[3] != "2" {
 		t.Fatalf("recommended layout %v", m[1:])
 	}
 	plan, sess := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {m[1]}, "rounds": {m[2]}, "bpr": {m[3]}, "method": {"mp"}})
@@ -82,16 +82,51 @@ func TestSectionsWithSitOuts(t *testing.T) {
 	defer ts.Close()
 	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
 	_, ev := c.post("/events", url.Values{"title": {"50 двойки"}, "date": {"2026-11-30"}})
-	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "copies": {"2"}, "per_copy": {"30"}})
+	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "sessions": {"1"}, "copies": {"2"}, "per_copy": {"32"}})
 	for i := 1; i <= 50; i++ {
 		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("А", i)}, "name2": {fmt.Sprint("Б", i)}})
 	}
 	page, _ := c.get(ev + "/new-session")
-	if !strings.Contains(page, "A: 13 маси (една двойка почива) · B: 13 маси (една двойка почива)") {
+	if !strings.Contains(page, "A: Мичъл 13 маси (една двойка почива) · B: Мичъл 13 маси (една двойка почива)") {
 		t.Fatalf("50 pairs:\n%s", page[strings.Index(page, "<main>"):min(len(page), strings.Index(page, "<main>")+2500)])
 	}
-	plan, _ := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"13,13"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
+	plan, _ := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"M13/25,M13/25"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
 	if strings.Count(plan, "(почива)") != 26 { // a sit-out at one table of each section, every round
 		t.Errorf("%d sit-outs in the plan, want 26", strings.Count(plan, "(почива)"))
+	}
+}
+
+// Two sessions, 40 pairs: a Mitchell of 13 tables and a complete Howell of 14 pairs on the same boards,
+// one field; the second session reseats pairs across both for new opponents.
+func TestMitchellAndHowell(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	_, ev := c.post("/events", url.Values{"title": {"Две сесии"}, "date": {"2026-11-30"}})
+	page, _ := c.get(ev + "/deal?from=36&to=44&boards=26&sessions=2")
+	if !strings.Contains(page, "Мичъл 13 + Хауел 7 маси") {
+		t.Fatalf("deal for 2 sessions:\n%s", page[strings.Index(page, "<main>"):min(len(page), strings.Index(page, "<main>")+4000)])
+	}
+	c.post(ev+"/deal", url.Values{"from": {"36"}, "to": {"44"}, "boards": {"26"}, "sessions": {"2"}, "copies": {"2"}, "per_copy": {"32"}})
+	for i := 1; i <= 40; i++ {
+		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("А", i)}, "name2": {fmt.Sprint("Б", i)}})
+	}
+	page, _ = c.get(ev + "/new-session")
+	m := regexp.MustCompile(`name="sections" value="([\w/,]+)"[\s\S]*?name="rounds" value="(\d+)"[\s\S]*?name="bpr" value="(\d+)"`).FindStringSubmatch(page)
+	if m == nil || m[1] != "M13/26,H7/14" || !strings.Contains(page, "Мичъл + Хауел") {
+		t.Fatalf("recommended: %v", m)
+	}
+	plan, sess := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {m[1]}, "rounds": {m[2]}, "bpr": {m[3]}, "method": {"mp"}})
+	if !strings.Contains(plan, "Секция A") || !strings.Contains(plan, "Секция B") || !strings.Contains(plan, "Маса B7") {
+		t.Error("plan of the two sections")
+	}
+	res, _ := c.get(sess + "/results")
+	if strings.Contains(res, "Север – Юг") { // a Howell in it: one field
+		t.Error("ranked in two lines")
 	}
 }

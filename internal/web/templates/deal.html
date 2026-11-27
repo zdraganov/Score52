@@ -5,24 +5,25 @@
   <label>Очаквани двойки от <input type="number" name="from" value="{{if $d.From}}{{$d.From}}{{end}}" min="4" max="400" class="num" required></label>
   <label>до <input type="number" name="to" value="{{if $d.To}}{{$d.To}}{{end}}" min="4" max="400" class="num" required></label>
   <label>Раздавания на двойка <input type="number" name="boards" value="{{$d.Boards}}" min="4" max="32" class="num"></label>
+  <label>Сесии <input type="number" name="sessions" value="{{$d.Sessions}}" min="1" max="9" class="num"></label>
   <button class="secondary">Покажи</button>
 </form>
-{{if $d.PerCopy}}<p class="alert">Записано: {{$d.Copies}} {{if eq $d.Copies 1}}копие{{else}}копия{{end}} на раздавания 1–{{$d.PerCopy}} ({{mul $d.Copies $d.PerCopy}} раздавания). Движенията на сесиите се избират в тези граници.</p>{{end}}
+{{if $d.Copies}}<p class="alert">Записано: {{$d.Copies}} {{if eq $d.Copies 1}}кутия{{else}}кутии{{end}} раздавания 1–32, {{$d.Sessions}} {{if eq $d.Sessions 1}}сесия{{else}}сесии{{end}}.</p>{{end}}
 {{if .Data.Asked}}
 {{with .Data.Options}}
-<p class="muted">Всяка секция е Мичъл и играе същите раздавания като останалите – своето копие, сравнява се с цялото поле. Раздаванията са до 32. В секция може една двойка да почива всеки рунд. Първият вариант е най-евтиният за очаквания максимум.</p>
+<p class="muted">За всеки брой двойки – движението, което бихте избрали: {{if eq $d.Sessions 1}}при една сесия секции Мичъл, а когато не стигат – един съкратен Хауел{{else}}при няколко сесии една голяма секция Мичъл и по-малка Хауел, за да се срещат нови противници в следващите сесии{{end}}. Секциите играят едни и същи раздавания, всяка от своя кутия. Първият вариант е за очаквания максимум, следващите стигат по-надолу.</p>
 <div class="options">
 {{range $i, $o := .}}
 <form method="post" class="card option{{if eq $i 0}} best{{end}}">
   <input type="hidden" name="t" value="{{$.Token}}">
   <input type="hidden" name="from" value="{{$d.From}}"><input type="hidden" name="to" value="{{$d.To}}">
-  <input type="hidden" name="boards" value="{{$d.Boards}}">
+  <input type="hidden" name="boards" value="{{$d.Boards}}"><input type="hidden" name="sessions" value="{{$d.Sessions}}">
   <input type="hidden" name="copies" value="{{$o.Copies}}"><input type="hidden" name="per_copy" value="{{$o.BoardsPerCopy}}">
-  <h3>{{$o.Copies}} × раздавания 1–{{$o.BoardsPerCopy}}</h3>
-  <p class="big">{{$o.Total}} раздавания</p>
-  <p class="muted">стигат за {{$o.Down}}–{{$d.To}} двойки</p>
+  <h3>{{$o.Copies}} {{if eq $o.Copies 1}}кутия{{else}}кутии{{end}} 1–32</h3>
+  <p class="big">стига за {{$o.Down}}–{{$d.To}} двойки</p>
+  <p class="muted">{{if $o.Duplicates}}до {{$o.Duplicates}} маси на рунд делят комплект с друга маса{{else}}никоя маса не дели комплект{{end}}</p>
   <table class="tbl small">
-    {{range $o.Rows}}<tr><td class="num">{{.Pairs}}</td><td>{{with .Layout}}{{range $k, $x := .Sections}}{{if $k}} + {{end}}{{$x.Tables}}{{end}} маси · {{.Rounds}}×{{.BoardsPerRound}}{{if .SitOuts}} · <span title="по една двойка почива всеки рунд">{{.SitOuts}} почиват</span>{{end}}{{if .Duplicates}} · +{{.Duplicates}} дубл.{{end}}{{else}}<span class="muted">няма движение</span>{{end}}</td></tr>{{end}}
+    {{range $o.Rows}}<tr><td class="num">{{.Pairs}}</td><td>{{with .Layout}}{{range $k, $x := .Sections}}{{if $k}} + {{end}}{{if eq $x.Kind "howell"}}Хауел {{else}}Мичъл {{end}}{{$x.Tables}}{{end}} маси{{if .SitOuts}} · {{.SitOuts}} почиват{{end}}{{if .Duplicates}} · {{.Duplicates}} делят{{end}}{{else}}<span class="muted">няма движение</span>{{end}}</td></tr>{{end}}
   </table>
   <button>Раздадено така</button>
 </form>

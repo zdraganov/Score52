@@ -9,20 +9,20 @@
   <button class="secondary">Покажи</button>
 </form>
 {{with .Data.Layouts}}
-<h2>На секции</h2>
-<p class="muted">Всяка секция е Мичъл на същите раздавания (свое копие), резултатите се сравняват в цялото поле.{{with $.Data.Deal}}{{if .PerCopy}} В границите на раздаденото: {{.Copies}} × раздавания 1–{{.PerCopy}}.{{end}}{{end}}</p>
+<h2>Препоръчани движения</h2>
+<p class="muted">{{if gt $.Data.Deal.Sessions 1}}Състезание в {{$.Data.Deal.Sessions}} сесии: най-напред една голяма секция Мичъл и по-малка Хауел, за да се срещат нови противници в следващите сесии.{{else}}Една сесия: секции Мичъл, а когато не стигат – съкратен Хауел.{{end}} Секциите играят едни и същи раздавания (всяка своя кутия) и се сравняват в цялото поле.</p>
 <div class="options">
 {{range $i, $l := .}}
 <form method="post" action="/e/{{$.EventID}}/sessions" class="card option{{if eq $i 0}} best{{end}}">
   <input type="hidden" name="t" value="{{$.Token}}">
   <input type="hidden" name="kind" value="sections">
   <input type="hidden" name="stage" value="{{$.Data.Stage}}">
-  <input type="hidden" name="sections" value="{{range $k, $x := $l.Sections}}{{if $k}},{{end}}{{$x.Tables}}{{end}}">
+  <input type="hidden" name="sections" value="{{$l.Spec}}">
   <input type="hidden" name="rounds" value="{{$l.Rounds}}">
   <input type="hidden" name="bpr" value="{{$l.BoardsPerRound}}">
-  <h3>{{len $l.Sections}} {{if eq (len $l.Sections) 1}}секция{{else}}секции{{end}}{{if eq $i 0}} <span class="badge good">препоръчано</span>{{end}}</h3>
+  <h3>{{if eq $l.Type "howell"}}Съкратен Хауел{{else if eq $l.Type "mixed"}}Мичъл + Хауел{{else}}{{len $l.Sections}} {{if eq (len $l.Sections) 1}}секция{{else}}секции{{end}} Мичъл{{end}}{{if eq $i 0}} <span class="badge good">препоръчано</span>{{end}}</h3>
   <p class="big">{{$l.Boards}} раздавания</p>
-  <p class="muted">{{range $k, $x := $l.Sections}}{{if $k}} · {{end}}{{$x.Letter}}: {{$x.Tables}} маси{{if lt $x.Pairs (mul 2 $x.Tables)}} (една двойка почива){{end}}{{end}}<br>{{$l.Rounds}} рунда × {{$l.BoardsPerRound}} · всяко раздаване се играе {{$l.Played}} пъти<br>трябват {{$l.Copies}} × раздавания 1–{{$l.BoardsPerCopy}}{{if $l.Duplicates}} и {{$l.Duplicates}} дублиран{{if gt $l.Duplicates 1}}и{{end}} комплект{{if gt $l.Duplicates 1}}а{{end}} (маси 1 и 2 играят един и същ){{end}}</p>
+  <p class="muted">{{range $k, $x := $l.Sections}}{{if $k}} · {{end}}{{$x.Letter}}: {{if eq $x.Kind "howell"}}Хауел{{else}}Мичъл{{end}} {{$x.Tables}} маси{{if eq $x.Kind "howell"}}{{if lt $x.Pairs (mul 2 $x.Tables)}} (една двойка почива){{end}}{{else if lt $x.Pairs (mul 2 $x.Tables)}} (една двойка почива){{end}}{{end}}<br>{{$l.Rounds}} рунда × {{$l.BoardsPerRound}}<br>{{$l.Copies}} {{if eq $l.Copies 1}}кутия{{else}}кутии{{end}} 1–{{$l.BoardsPerCopy}}{{if $l.Duplicates}}; {{$l.Duplicates}} маси на рунд делят комплект{{end}}</p>
   <label>Точкуване <select name="method">{{range $k, $v := $.Data.Methods}}<option value="{{$k}}"{{if eq $k $.Data.Method}} selected{{end}}>{{$v}}</option>{{end}}</select></label>
   <button>Избери</button>
 </form>
