@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -342,7 +343,8 @@ func suits(c string) template.HTML {
 
 var funcs = template.FuncMap{
 	"deref":  func(v *float64) float64 { return *v },
-	"pct100": func(v float64) string { return strconv.FormatFloat(100*v, 'f', -1, 64) },
+	"pct100": func(v float64) string { return strconv.FormatFloat(math.Round(10000*v)/100, 'f', -1, 64) },
+	"rest":   func(v float64) float64 { return 1 - v },
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
 		for i := 0; i+1 < len(kv); i += 2 {

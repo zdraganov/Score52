@@ -124,7 +124,7 @@ func TestStagesFlow(t *testing.T) {
 		t.Errorf("winner's total %v, want %v", w.Total.Total, want)
 	}
 	stand, _ = c.get(ev + "/standings")
-	if !strings.Contains(stand, "пренасяне 25%") || strings.Contains(stand, "Раздели") {
+	if !strings.Contains(stand, "общо = 25% квалификация + 75% финал") || !strings.Contains(stand, `<span class="weight">75%</span>`) || strings.Contains(stand, "Раздели") {
 		t.Error("standings after the final started")
 	}
 	// the final's file goes to bridge.bg as .f1, carry-over in, with its boards (one session)
@@ -136,6 +136,33 @@ func TestStagesFlow(t *testing.T) {
 	if n := strings.Count(xml, "<PAIR>"); n != cut || !strings.Contains(xml, "<BOARD>") || !strings.Contains(xml, fmt.Sprintf("<PERCENTAGE>%.2f</PERCENTAGE>", w.Total.Total)) {
 		t.Errorf("final A usebio: %d pairs\n%s", n, xml[:min(len(xml), 1500)])
 	}
+	// a second session of final A: mixed again, and the final's % covers both sessions
+	page, _ = c.get(ev + "/new-session?stage=A&min=10&max=30")
+	if !strings.Contains(page, "Финал A: сесия 2") || !strings.Contains(page, "разместват") {
+		t.Fatal("second final session page")
+	}
+	m = regexp.MustCompile(`name="kind" value="([^"]+)"[\s\S]*?name="tables" value="(\d+)"[\s\S]*?name="rounds" value="(\d+)"[\s\S]*?name="bpr" value="(\d+)"`).FindStringSubmatch(page)
+	_, fa2 := c.post(ev+"/sessions", url.Values{"stage": {"A"}, "kind": {m[1]}, "tables": {m[2]}, "rounds": {m[3]}, "bpr": {m[4]}, "method": {"mp"}})
+	if fa2 != ev+"/s/fA2" {
+		t.Fatalf("second final session at %s", fa2)
+	}
+	fill(c, fa2, rng)
+	sessions, _ = st.Sessions()
+	fr, _ = stageStandings(st, sessions, "A", carry, 0.25, pl.Finals[0].Entries)
+	for _, row := range fr.Rows {
+		a, b := *row.PerSession[0], *row.PerSession[1]
+		if row.Total.Score < math.Min(a, b)-1e-9 || row.Total.Score > math.Max(a, b)+1e-9 {
+			t.Errorf("%s: final %v is not between its sessions %v and %v", row.Names, row.Total.Score, a, b)
+		}
+		if want := 0.25*carry[int(row.Entry)] + 0.75*row.Total.Score; math.Abs(row.Total.Total-want) > 1e-9 {
+			t.Errorf("%s: total %v, want %v", row.Names, row.Total.Total, want)
+		}
+	}
+	xml, _ = c.get(ev + "/stage/A/usebio.xml")
+	if strings.Contains(xml, "<BOARD>") || strings.Count(xml, "<PAIR>") != cut {
+		t.Error("a two-session final's file should hold the ranking only")
+	}
+
 	// planning again is refused once a final has a session
 	r, _ = c.http.PostForm(ts.URL+ev+"/finals", url.Values{"t": {s.token}, "nA": {"4"}, "carry": {"0"}})
 	if r.StatusCode != 400 {
