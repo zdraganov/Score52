@@ -71,7 +71,7 @@ func TestDealAndSections(t *testing.T) {
 	}
 }
 
-// 50 pairs: 13 + 13 tables with a pair sitting out in each section; the plan shows both.
+// 51 pairs: 13 + 13 tables with a pair sitting out in section A (an even number would sit nobody out).
 func TestSectionsWithSitOuts(t *testing.T) {
 	s, err := New(t.TempDir())
 	if err != nil {
@@ -81,18 +81,18 @@ func TestSectionsWithSitOuts(t *testing.T) {
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
-	_, ev := c.post("/events", url.Values{"title": {"50 двойки"}, "date": {"2026-11-30"}})
+	_, ev := c.post("/events", url.Values{"title": {"51 двойки"}, "date": {"2026-11-30"}})
 	c.post(ev+"/deal", url.Values{"from": {"50"}, "to": {"60"}, "boards": {"26"}, "sessions": {"1"}, "copies": {"2"}, "per_copy": {"32"}})
-	for i := 1; i <= 50; i++ {
+	for i := 1; i <= 51; i++ {
 		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("А", i)}, "name2": {fmt.Sprint("Б", i)}})
 	}
 	page, _ := c.get(ev + "/new-session")
-	if !strings.Contains(page, "A: Мичъл 13 маси (една двойка почива) · B: Мичъл 13 маси (една двойка почива)") {
+	if !strings.Contains(page, "A: Мичъл 13 маси (една двойка почива) · B: Мичъл 13 маси<") {
 		t.Fatalf("50 pairs:\n%s", page[strings.Index(page, "<main>"):min(len(page), strings.Index(page, "<main>")+2500)])
 	}
-	plan, _ := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"M13/25,M13/25"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
-	if strings.Count(plan, "(почива)") != 26 { // a sit-out at one table of each section, every round
-		t.Errorf("%d sit-outs in the plan, want 26", strings.Count(plan, "(почива)"))
+	plan, _ := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"M13/25,M13/26"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
+	if strings.Count(plan, "(почива)") != 13 { // a sit-out at one table of section A, every round
+		t.Errorf("%d sit-outs in the plan, want 13", strings.Count(plan, "(почива)"))
 	}
 }
 
@@ -128,5 +128,25 @@ func TestMitchellAndHowell(t *testing.T) {
 	res, _ := c.get(sess + "/results")
 	if strings.Contains(res, "Север – Юг") { // a Howell in it: one field
 		t.Error("ranked in two lines")
+	}
+}
+
+// A Howell with more tables than sets lists the sets to copy for the empty table.
+func TestSideTableSets(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	_, ev := c.post("/events", url.Values{"title": {"Хауел"}, "date": {"2026-11-30"}})
+	for i := 1; i <= 40; i++ {
+		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("А", i)}, "name2": {fmt.Sprint("Б", i)}})
+	}
+	plan, _ := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"H20/40"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
+	if !strings.Contains(plan, "Втори екземпляр на празна маса") {
+		t.Error("no side-table sets for a 20-table Howell on 16 sets")
 	}
 }

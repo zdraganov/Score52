@@ -24,7 +24,11 @@ type Layout struct {
 	// Duplicates: sets to copy once more for relay-and-stand sections (the first and last table share one)
 	Duplicates int
 	SitOuts    int    // sections with a pair sitting out each round
-	Type       string // TypeSections, TypeHowell, TypeMixed
+	Type       string // TypeSections, TypeHowell, TypeHowells, TypeMixed
+	// SideSets: sets that need a second copy on an empty table, for the tables sharing a set in a round
+	// (the BBF TD's way: the sharing table takes its set from there). An estimate here; the built
+	// movement's SideSets is exact.
+	SideSets int
 }
 
 // Section is one section of a layout.
@@ -63,11 +67,12 @@ const (
 const (
 	TypeSections = "sections"
 	TypeHowell   = "howell"
+	TypeHowells  = "howells"
 	TypeMixed    = "mixed"
 )
 
 // Layouts lists the ways to seat `pairs` pairs for `boards` boards (±tol) in an event of `sessions`
-// sessions, best first. The federation's TD's preference decides the kind: a single session plays
+// sessions, best first. With an even number of pairs, layouts with a pair sitting out come last. The federation's TD's preference decides the kind: a single session plays
 // Mitchell sections when they fit, else one reduced Howell (one field); an event of 2-3 sessions plays one
 // big Mitchell section and a smaller Howell section, so the next session can seat pairs against new
 // opponents. Within a kind: boards closest to the target, each board played the most times across the
@@ -90,6 +95,9 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 					if sizes[k-1] < MinSectionTables && k > 1 || sizes[0] > MaxSectionTables {
 						continue
 					}
+					if k == 1 && sizes[0] != r && sizes[0] != r+1-r%2 { // the TD's: one section is a complete Mitchell
+						continue
+					}
 					var secs []Section
 					left := 2*tables - pairs
 					for _, t := range sizes {
@@ -104,9 +112,15 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 			}
 			// one Howell for the whole field
 			keep(assemble([]Section{{Tables: need, Pairs: pairs, Kind: Howell}}, r, bpr))
-			// a Mitchell section and a Howell section for the rest
-			for t := max(r, 3); t <= MaxSectionTables; t++ {
-				for _, mp := range []int{2 * t, 2*t - 1} {
+			// two Howell sections, the field halved, or nearly so with an even number in each (nobody sits out)
+			for _, a := range []int{pairs - pairs/2, pairs/2 + pairs/2%2} {
+				if b := pairs - a; b >= r+1 && a >= b {
+					keep(assemble([]Section{{Tables: (a + 1) / 2, Pairs: a, Kind: Howell}, {Tables: (b + 1) / 2, Pairs: b, Kind: Howell}}, r, bpr))
+				}
+			}
+			// a complete Mitchell section (the TD's: as many tables as rounds) and a Howell section for the rest
+			for t := max(r, 3); t <= r+1-r%2; t++ {
+				for _, mp := range []int{2 * t} { // a full Mitchell: with a pair sitting out, two Howells instead (TD)
 					if rest := pairs - mp; rest >= 4 && rest < mp { // the Mitchell is the bigger one
 						keep(assemble([]Section{{Tables: t, Pairs: mp, Kind: Mitchell}, {Tables: (rest + 1) / 2, Pairs: rest, Kind: Howell}}, r, bpr))
 					}
@@ -115,9 +129,9 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 		}
 	}
 	rank := func(l Layout) int { // the TD's order of the kinds
-		order := map[string]int{TypeSections: 0, TypeHowell: 1, TypeMixed: 2}
-		if sessions >= 2 {
-			order = map[string]int{TypeMixed: 0, TypeSections: 1, TypeHowell: 2}
+		order := map[string]int{TypeSections: 0, TypeMixed: 1, TypeHowells: 2, TypeHowell: 3}
+		if sessions >= 2 && l.Type == TypeMixed && l.SideSets == 0 {
+			return -1 // several sessions: a Mitchell and a Howell, for new opponents next time
 		}
 		return order[l.Type]
 	}
@@ -126,11 +140,18 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 		if da, db := abs(a.Boards-boards), abs(b.Boards-boards); da != db {
 			return da < db
 		}
+		// the TD's: with an even number of pairs nobody sits out, whatever the kind
+		if sa, sb := pairs%2 == 0 && a.SitOuts > 0, pairs%2 == 0 && b.SitOuts > 0; sa != sb {
+			return sb
+		}
 		if ra, rb := rank(a), rank(b); ra != rb {
 			return ra < rb
 		}
 		if a.SitOuts != b.SitOuts {
 			return a.SitOuts < b.SitOuts
+		}
+		if a.SideSets != b.SideSets {
+			return a.SideSets < b.SideSets
 		}
 		if a.Duplicates != b.Duplicates {
 			return a.Duplicates < b.Duplicates
@@ -187,6 +208,7 @@ func assemble(secs []Section, rounds, bpr int) (Layout, bool) {
 			x.Tables = n / 2
 			sets = max(min(maxSets, x.Tables), rounds)
 			l.Duplicates += max(0, x.Tables-sets)
+			l.SideSets += min(sets, max(0, x.Tables-sets)*rounds) // a shared set a table and round, at most every set
 			l.Complete = l.Complete && rounds == n-1
 			l.Played += rounds * x.Tables / sets
 			if x.Pairs%2 == 1 {
@@ -207,6 +229,7 @@ func assemble(secs []Section, rounds, bpr int) (Layout, bool) {
 			default:
 				x.Kind = RelayMitchell
 				l.Duplicates++
+				l.SideSets += rounds // the shared set changes every round
 			}
 			if x.Tables < 3 || rounds > max {
 				return l, false
@@ -223,6 +246,8 @@ func assemble(secs []Section, rounds, bpr int) (Layout, bool) {
 	switch {
 	case hasH && hasM:
 		l.Type = TypeMixed
+	case hasH && len(l.Sections) > 1:
+		l.Type = TypeHowells
 	case hasH:
 		l.Type = TypeHowell
 	}

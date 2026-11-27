@@ -350,7 +350,22 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.Title = d.Name
-	p.Data = map[string]any{"S": d, "Plans": plans, "Done": done}
+	// sets some round has at two tables: a second copy goes on an empty table (the TD's way)
+	var side []string
+	for k, sets := range m.SideSets() {
+		var ss []string
+		for _, x := range sets {
+			b := boardsOf(movement.Seat{Set: x}, d.BoardsPerRound, d.FirstBoard)
+			ss = append(ss, fmt.Sprintf("%d–%d", b[0], b[len(b)-1]))
+		}
+		label := ""
+		if len(m.Sections) > 0 {
+			label = "секция " + m.Sections[k].Letter + ": "
+		}
+		side = append(side, label+strings.Join(ss, ", "))
+	}
+	sort.Strings(side)
+	p.Data = map[string]any{"S": d, "Plans": plans, "Done": done, "Side": side}
 	s.render(w, "session", p)
 }
 

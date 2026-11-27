@@ -86,12 +86,20 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   yet (a search shows such movements exist for 14–24 tables within boards 1–32).
   The session's movement is the sections combined (`movement.Combine`): tables and pairs numbered on, shown
   as "B7", boards moving within their section; `Movement.Section(i)` gives a section back for Bridgemate.
-- **By the number of sessions** (the BBF TD's practice): one session plays Mitchell sections when they
-  fit, else a **reduced Howell** (one field; on boards up to 32 a 20-table Howell has 16 sets, so 4 tables
-  a round share a set, found by local search so no pair plays a set twice); 2–3 sessions play **one big
-  Mitchell section and a smaller Howell section** (40 pairs: Mitchell 13 tables + a complete Howell of 14
-  pairs), so the next session can reseat pairs against new opponents. The deal advice speaks in whole
-  boxes 1–32 and the most tables sharing a set in a round.
+- **The BBF TD's rules** (26 boards = 13 rounds as the example):
+  - a single Mitchell section is complete: **as many tables as rounds** (13); two or more sections may be
+    13–16 tables (53–60 pairs: two Mitchell sections);
+  - otherwise a full 13-table Mitchell and a **Howell** for the rest (39–50 pairs); several sessions prefer
+    this to Mitchell sections when the Howell needs no shared sets, so later sessions reseat pairs against
+    new opponents;
+  - else **two Howells** (28–38 pairs), split unevenly when that avoids a sit-out;
+  - with an **even number of pairs nobody sits out**; with an odd one, a sit-out in a section is fine;
+  - tables sharing a set in a round take it from a **second copy on an empty table**: the plan lists those
+    sets. A reduced Howell with more tables than sets (boards up to 32: 16 sets) finds its sets by local
+    search, sharing as little as can be.
+  - Pending: the **appendix Mitchell** he uses for 32 and 36 pairs (two Howells until it's defined), and
+    the 12-table Mitchell with one switch round.
+  The deal advice speaks in whole boxes 1–32.
 - **Relay-and-stand Mitchell** (even tables, all rounds): the first and the last table share a set, the
   stand is between tables T/2 and T/2+1, boards move down a table through it.
 - **Howell** for 8+ pairs comes from a cyclic Room square, so it needs one set of boards and every table

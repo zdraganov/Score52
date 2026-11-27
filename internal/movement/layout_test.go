@@ -7,7 +7,9 @@ func TestLayouts(t *testing.T) {
 		pairs int
 		want  string
 	}{
-		{60, "M15/30,M15/30"}, {56, "M14/28,M14/28"}, {52, "M13/26,M13/26"}, {50, "M13/25,M13/25"}, {40, "H20/40"}, {30, "M15/30"},
+		{60, "M15/30,M15/30"}, {56, "M14/28,M14/28"}, {52, "M13/26,M13/26"}, {50, "M13/26,H12/24"},
+		{48, "M13/26,H11/22"}, {40, "M13/26,H7/14"}, {38, "H10/20,H9/18"}, {34, "H9/18,H8/16"}, {30, "H8/16,H7/14"}, {26, "M13/26"},
+		{51, "M13/25,M13/26"}, {35, "H9/18,H9/17"},
 	} {
 		ls := Layouts(tc.pairs, 26, 0, 0, 0, 1)
 		if len(ls) == 0 || ls[0].Spec() != tc.want || ls[0].Boards != 26 {
@@ -21,16 +23,12 @@ func TestLayouts(t *testing.T) {
 	}
 }
 
-// Before the day, 40-60 pairs expected, one session of 26 boards: two boxes seat 50-60 (Mitchell
-// sections); below 50 a reduced Howell, with tables sharing sets.
+// Before the day, 26-60 pairs expected, one session of 26 boards: two boxes seat them all (Mitchell
+// sections, a Mitchell and a Howell, two Howells), nobody sharing a set.
 func TestAdvise(t *testing.T) {
-	ds := Advise(40, 60, 26, 0, 1)
-	if len(ds) < 2 || ds[0].Copies != 2 || ds[0].Duplicates != 0 || ds[0].Down != 50 {
-		t.Fatalf("first deal: %+v", ds[0])
-	}
-	last := ds[len(ds)-1]
-	if last.Down != 40 || last.Duplicates == 0 || last.Copies != 2 {
-		t.Errorf("last deal: %d boxes, %d sharing, down to %d", last.Copies, last.Duplicates, last.Down)
+	ds := Advise(26, 60, 26, 0, 1)
+	if len(ds) != 1 || ds[0].Down != 26 || ds[0].Copies != 2 || ds[0].Duplicates != 0 {
+		t.Errorf("deals: %+v", ds)
 	}
 	for _, d := range ds {
 		for p, l := range d.ByPairs {
@@ -39,14 +37,14 @@ func TestAdvise(t *testing.T) {
 			}
 		}
 	}
-	// two sessions: a Mitchell and a Howell all the way, no sharing
-	if two := Advise(40, 60, 26, 0, 2); len(two) != 1 || two[0].Down != 40 || two[0].Duplicates != 0 {
+	// two sessions: the same boxes
+	if two := Advise(40, 60, 26, 0, 2); two[len(two)-1].Down != 40 || two[len(two)-1].Duplicates != 0 {
 		t.Errorf("two sessions: %+v", two)
 	}
 }
 
 func TestSitOutsPerSection(t *testing.T) {
-	l := Layouts(50, 26, 0, 0, 0, 1)[0]
+	l, _ := LayoutOf("M13/25,M13/25", 13, 2) // two sections with a pair sitting out in each
 	if l.SitOuts != 2 || l.Sections[0].Pairs != 25 || l.Sections[1].Pairs != 25 {
 		t.Fatalf("50 pairs: %s, %+v", l, l.Sections)
 	}
@@ -163,10 +161,10 @@ func TestLayoutsBySessions(t *testing.T) {
 		dups            int
 	}{
 		{56, 1, TypeSections, "M14/28,M14/28", 0}, // fits Mitchell sections
-		{40, 1, TypeHowell, "H20/40", 4},          // the gap: one reduced Howell, 16 sets, 4 tables a round share
-		{40, 2, TypeMixed, "M13/26,H7/14", 0},     // a Mitchell and a complete Howell of 14
-		{56, 2, TypeMixed, "M16/32,H12/24", 0},    // the bigger the Mitchell, the better
-		{30, 3, TypeSections, "M15/30", 0},        // a Howell section of 4 pairs can't play 13 rounds
+		{40, 1, TypeMixed, "M13/26,H7/14", 0},     // a complete Mitchell of 13 tables and a complete Howell of 14
+		{50, 2, TypeMixed, "M13/26,H12/24", 0},    // several sessions: Mitchell and Howell, for new opponents
+		{56, 2, TypeSections, "M14/28,M14/28", 0}, // ... unless the Howell would need the side table
+		{30, 3, TypeHowells, "H8/16,H7/14", 0},    // the TD's: two Howells, nobody sitting out
 	} {
 		ls := Layouts(tc.pairs, 26, 0, 0, 0, tc.sessions)
 		if len(ls) == 0 {
