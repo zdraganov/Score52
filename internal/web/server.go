@@ -346,6 +346,7 @@ func suits(c string) template.HTML {
 var funcs = template.FuncMap{
 	"deref":  func(v *float64) float64 { return *v },
 	"mul":    func(a, b int) int { return a * b },
+	"sub":    func(a, b int) int { return a - b },
 	"pct100": func(v float64) string { return strconv.FormatFloat(math.Round(10000*v)/100, 'f', -1, 64) },
 	"rest":   func(v float64) float64 { return 1 - v },
 	"dict": func(kv ...any) map[string]any {

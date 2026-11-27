@@ -69,6 +69,8 @@ const (
 	TypeHowell   = "howell"
 	TypeHowells  = "howells"
 	TypeMixed    = "mixed"
+	TypeWeb      = "web"      // one Web Mitchell
+	TypeAppendix = "appendix" // one Appendix Mitchell
 )
 
 // Layouts lists the ways to seat `pairs` pairs for `boards` boards (±tol) in an event of `sessions`
@@ -81,8 +83,11 @@ const (
 func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 	need := (pairs + 1) / 2
 	var out []Layout
+	seen := map[string]bool{}
 	keep := func(l Layout, ok bool) {
-		if ok && l.BoardsPerCopy <= MaxBoard && (maxDeal == 0 || l.BoardsPerCopy <= maxDeal) && (maxCopies == 0 || l.Copies <= maxCopies) {
+		key := l.Spec() + fmt.Sprint(l.Rounds, l.BoardsPerRound)
+		if ok && !seen[key] && l.BoardsPerCopy <= MaxBoard && (maxDeal == 0 || l.BoardsPerCopy <= maxDeal) && (maxCopies == 0 || l.Copies <= maxCopies) {
+			seen[key] = true
 			out = append(out, l)
 		}
 	}
@@ -112,6 +117,13 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 			}
 			// one Howell for the whole field
 			keep(assemble([]Section{{Tables: need, Pairs: pairs, Kind: Howell}}, r, bpr))
+			// a Web Mitchell and an Appendix Mitchell (13 rounds main) for an even number of pairs
+			if pairs%2 == 0 && need%2 == 0 && need > r {
+				keep(assemble([]Section{{Tables: need, Pairs: pairs, Kind: WebMitchell}}, r, bpr))
+			}
+			if pairs%2 == 0 && r%2 == 1 && need > r && need-r < r {
+				keep(assemble([]Section{{Tables: need, Pairs: pairs, Kind: AppendixMitchell}}, r, bpr))
+			}
 			// two Howell sections, the field halved, or nearly so with an even number in each (nobody sits out)
 			for _, a := range []int{pairs - pairs/2, pairs/2 + pairs/2%2} {
 				if b := pairs - a; b >= r+1 && a >= b {
@@ -129,9 +141,13 @@ func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 		}
 	}
 	rank := func(l Layout) int { // the TD's order of the kinds
-		order := map[string]int{TypeSections: 0, TypeMixed: 1, TypeHowells: 2, TypeHowell: 3}
-		if sessions >= 2 && l.Type == TypeMixed && l.SideSets == 0 {
+		order := map[string]int{TypeSections: 0, TypeMixed: 1, TypeHowells: 3, TypeWeb: 4, TypeAppendix: 4, TypeHowell: 5}
+		extra := l.Sections[0].Tables - l.Rounds // tables over a complete Mitchell's
+		switch {
+		case sessions >= 2 && l.Type == TypeMixed && l.SideSets == 0:
 			return -1 // several sessions: a Mitchell and a Howell, for new opponents next time
+		case l.Type == TypeWeb && extra == 3, l.Type == TypeAppendix && extra == 5:
+			return 2 // the TD's: 32 pairs a Web Mitchell, 36 an Appendix Mitchell (13+5), for 26 boards
 		}
 		return order[l.Type]
 	}
@@ -199,6 +215,17 @@ func assemble(secs []Section, rounds, bpr int) (Layout, bool) {
 	for i, x := range secs {
 		x.Letter = string(rune('A' + i))
 		sets := x.Tables
+		if x.Kind == WebMitchell || x.Kind == AppendixMitchell {
+			// the whole field: rounds sets on two copies of the boards (mirrored tables / the appendix share)
+			if x.Pairs != 2*x.Tables || rounds > x.Tables || len(secs) != 1 ||
+				x.Kind == WebMitchell && x.Tables%2 == 1 || x.Kind == AppendixMitchell && (rounds%2 == 0 || x.Tables-rounds >= rounds) {
+				return l, false
+			}
+			l.Copies, l.Played, l.BoardsPerCopy = 2, x.Tables, rounds*bpr
+			l.Type = map[Kind]string{WebMitchell: TypeWeb, AppendixMitchell: TypeAppendix}[x.Kind]
+			l.Sections = append(l.Sections, x)
+			return l, true
+		}
 		if x.Kind == Howell {
 			hasH = true
 			n := x.Pairs + x.Pairs%2
@@ -254,13 +281,14 @@ func assemble(secs []Section, rounds, bpr int) (Layout, bool) {
 	return l, true
 }
 
-// Spec is a layout's sections as text, to rebuild it from a form: "M13/26,H7/14" (kind, tables, pairs).
+// Spec is a layout's sections as text, to rebuild it from a form: "M13/26,H7/14" (kind, tables, pairs;
+// M Mitchell, H Howell, W Web Mitchell, A Appendix Mitchell).
 func (l Layout) Spec() string {
 	var out []string
 	for _, x := range l.Sections {
-		k := "M"
-		if x.Kind == Howell {
-			k = "H"
+		k := map[Kind]string{Howell: "H", WebMitchell: "W", AppendixMitchell: "A"}[x.Kind]
+		if k == "" {
+			k = "M"
 		}
 		out = append(out, fmt.Sprintf("%s%d/%d", k, x.Tables, x.Pairs))
 	}
@@ -277,12 +305,9 @@ func LayoutOf(spec string, rounds, bpr int) (Layout, error) {
 			return Layout{}, fmt.Errorf("bad section %q", f)
 		}
 		k, f = f[:1], f[1:]
-		if _, err := fmt.Sscanf(f, "%d/%d", &t, &p); err != nil || (k != "M" && k != "H") {
+		kind, ok := map[string]Kind{"M": Mitchell, "H": Howell, "W": WebMitchell, "A": AppendixMitchell}[k]
+		if _, err := fmt.Sscanf(f, "%d/%d", &t, &p); err != nil || !ok {
 			return Layout{}, fmt.Errorf("bad section %q", k+f)
-		}
-		kind := Mitchell
-		if k == "H" {
-			kind = Howell
 		}
 		secs = append(secs, Section{Tables: t, Pairs: p, Kind: kind})
 	}
@@ -375,6 +400,12 @@ func (l Layout) Build() (Movement, error) {
 	var ms []Movement
 	var letters []string
 	for _, x := range l.Sections {
+		if x.Kind == WebMitchell {
+			return NewWebMitchell(x.Tables, l.Rounds, true)
+		}
+		if x.Kind == AppendixMitchell {
+			return NewAppendixMitchell(l.Rounds, x.Tables-l.Rounds, true)
+		}
 		if x.Kind == Howell {
 			m, err := NewReducedHowell(x.Pairs, l.Rounds, MaxBoard/l.BoardsPerRound)
 			if err != nil {

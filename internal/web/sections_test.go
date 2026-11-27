@@ -150,3 +150,38 @@ func TestSideTableSets(t *testing.T) {
 		t.Error("no side-table sets for a 20-table Howell on 16 sets")
 	}
 }
+
+// 32 pairs: a Web Mitchell, 36: an Appendix Mitchell 13+5, as the BBF TD plays them.
+func TestWebAndAppendix(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	for _, tc := range []struct {
+		pairs      int
+		spec, name string
+	}{{32, "W16/32", "Уеб Мичъл"}, {36, "A18/36", "Мичъл с апендикс 13+5"}} {
+		_, ev := c.post("/events", url.Values{"title": {tc.name}, "date": {"2026-11-30"}})
+		c.post(ev+"/deal", url.Values{"from": {"30"}, "to": {"40"}, "boards": {"26"}, "sessions": {"1"}, "copies": {"2"}, "per_copy": {"32"}})
+		for i := 1; i <= tc.pairs; i++ {
+			c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("А", i)}, "name2": {fmt.Sprint("Б", i)}})
+		}
+		page, _ := c.get(ev + "/new-session")
+		m := regexp.MustCompile(`name="sections" value="([\w/,]+)"`).FindStringSubmatch(page)
+		if m == nil || m[1] != tc.spec || !strings.Contains(page, tc.name) {
+			t.Fatalf("%d pairs: recommended %v", tc.pairs, m)
+		}
+		plan, sess := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {tc.spec}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
+		if strings.Contains(plan, "празна маса") {
+			t.Errorf("%d pairs: a side-table note on a two-copy movement", tc.pairs)
+		}
+		trav, _ := c.get(sess + "/b/1")
+		if n := len(regexp.MustCompile(`name="c\d+"`).FindAllString(trav, -1)); n != tc.pairs/2 { // every table plays every set once
+			t.Errorf("%d pairs: board 1 played %d times", tc.pairs, n)
+		}
+	}
+}
