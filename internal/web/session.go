@@ -69,6 +69,19 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	for _, o := range movement.Options(len(entries), lo, hi, copies) {
 		opts = append(opts, option{Option: o, Name: kindNames[o.Kind]})
 	}
+	// a field in sections: the layouts that fit the boards wanted and what was dealt
+	dl := loadDeal(st)
+	target, tol := dl.Boards, dl.Tol
+	if r.URL.Query().Get("min") != "" || target == 0 {
+		target, tol = (lo+hi)/2, (hi-lo)/2
+	}
+	var layouts []movement.Layout
+	if len(entries) >= 4*movement.MinSectionTables {
+		layouts = movement.Layouts(len(entries), target, tol, dl.PerCopy, dl.Copies)
+		if len(layouts) > 4 {
+			layouts = layouts[:4]
+		}
+	}
 	earlier := stageSessions(sessions, stage)
 	method := "mp"
 	if len(earlier) > 0 { // a stage keeps its scoring
@@ -78,7 +91,8 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	}
 	p.Title = "Нова сесия"
 	p.Data = map[string]any{"Pairs": len(entries), "Min": lo, "Max": hi, "Options": opts, "Methods": methodNames,
-		"Stage": stage, "StageName": stageName(stage), "Number": len(earlier) + 1, "Method": method, "Mixed": len(earlier) > 0, "Copies": copies}
+		"Stage": stage, "StageName": stageName(stage), "Number": len(earlier) + 1, "Method": method, "Mixed": len(earlier) > 0, "Copies": copies,
+		"Layouts": layouts, "Deal": dl}
 	s.render(w, "new-session", p)
 }
 
@@ -130,7 +144,20 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusBadRequest, errors.New("невалидни настройки на сесията"))
 		return
 	}
-	m, err := buildMovement(movement.Kind(r.PostFormValue("kind")), len(order), tables, rounds)
+	var m movement.Movement
+	if r.PostFormValue("kind") == "sections" {
+		var sizes []int
+		for _, f := range strings.Split(r.PostFormValue("sections"), ",") {
+			n, _ := strconv.Atoi(f)
+			sizes = append(sizes, n)
+		}
+		var l movement.Layout
+		if l, err = movement.LayoutOf(len(order), sizes, rounds, bpr); err == nil {
+			m, err = l.Build()
+		}
+	} else {
+		m, err = buildMovement(movement.Kind(r.PostFormValue("kind")), len(order), tables, rounds)
+	}
 	if err != nil {
 		s.fail(w, http.StatusBadRequest, err)
 		return
@@ -238,10 +265,16 @@ func boardsOf(seat movement.Seat, bpr, first int) []int {
 }
 
 // planCell is one table in one round of the plan.
+type sectionPlan struct {
+	Letter string
+	Tables []string
+	Grid   [][]planCell
+}
+
 type planCell struct {
 	Next          string // where the boards go after the round
 	Note          string // shared boards
-	NS, EW        int
+	NS, EW        string
 	First, Last   int
 	SitOut, Empty bool
 }
@@ -252,21 +285,33 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := d.Movement
-	grid := make([][]planCell, m.Rounds)
-	for i := range grid {
-		grid[i] = make([]planCell, m.Tables)
-		for j := range grid[i] {
-			grid[i][j].Empty = true
+	// one plan per section (one for a session without sections), its tables by their labels
+	secs := m.Sections
+	if len(secs) == 0 {
+		secs = []movement.SectionInfo{{FirstTable: 1, Tables: m.Tables}}
+	}
+	plans := make([]sectionPlan, len(secs))
+	for k, x := range secs {
+		plans[k].Letter = x.Letter
+		for t := 0; t < x.Tables; t++ {
+			plans[k].Tables = append(plans[k].Tables, m.TableLabel(x.FirstTable+t))
+		}
+		plans[k].Grid = make([][]planCell, m.Rounds)
+		for i := range plans[k].Grid {
+			plans[k].Grid[i] = make([]planCell, x.Tables)
+			for j := range plans[k].Grid[i] {
+				plans[k].Grid[i][j].Empty = true
+			}
 		}
 	}
 	for _, seat := range m.Seats {
 		b := boardsOf(seat, d.BoardsPerRound, d.FirstBoard)
-		c := planCell{NS: seat.NS, EW: seat.EW, First: b[0], Last: b[len(b)-1], SitOut: seat.NS == m.Phantom || seat.EW == m.Phantom}
+		c := planCell{NS: m.Label(seat.NS), EW: m.Label(seat.EW), First: b[0], Last: b[len(b)-1], SitOut: seat.NS == m.Phantom || seat.EW == m.Phantom}
 		if m.Shared {
 			var with []string
 			for _, s := range m.Round(seat.Round) {
-				if s.Set == seat.Set && s.Table != seat.Table {
-					with = append(with, strconv.Itoa(s.Table))
+				if s.Set == seat.Set && s.Table != seat.Table && s.Section == seat.Section {
+					with = append(with, m.TableLabel(s.Table))
 				}
 			}
 			if len(with) > 0 {
@@ -278,12 +323,17 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 			case 0:
 				c.Next = "→ стойка"
 			case 1:
-				c.Next = fmt.Sprintf("→ маса %d", next[0])
+				c.Next = "→ маса " + m.TableLabel(next[0])
 			default:
-				c.Next = "→ маси " + strings.Trim(strings.Join(strings.Fields(fmt.Sprint(next)), ", "), "[]")
+				var ts []string
+				for _, n := range next {
+					ts = append(ts, m.TableLabel(n))
+				}
+				c.Next = "→ маси " + strings.Join(ts, ", ")
 			}
 		}
-		grid[seat.Round-1][seat.Table-1] = c
+		x := secs[seat.Section]
+		plans[seat.Section].Grid[seat.Round-1][seat.Table-x.FirstTable] = c
 	}
 	done := 0
 	for _, b := range d.Boards {
@@ -292,24 +342,25 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.Title = d.Name
-	p.Data = map[string]any{"S": d, "Grid": grid, "Done": done}
+	p.Data = map[string]any{"S": d, "Plans": plans, "Done": done}
 	s.render(w, "session", p)
 }
 
 // --- traveller ---
 
 type travRow struct {
-	Round, Table int
-	NS, EW       int
-	NSNames      string
-	EWNames      string
-	Contract     string
-	Declarer     string
-	Result       string
-	Adjusted     string // "60-40"...
-	Score        *int
-	NSPoints     *float64
-	Err          string
+	TableLabel, NSLabel, EWLabel string
+	Round, Table                 int
+	NS, EW                       int
+	NSNames                      string
+	EWNames                      string
+	Contract                     string
+	Declarer                     string
+	Result                       string
+	Adjusted                     string // "60-40"...
+	Score                        *int
+	NSPoints                     *float64
+	Err                          string
 }
 
 var adjustedScores = []string{"60-40", "50-50", "40-60", "60-60", "50-40", "40-50", "40-40"}
@@ -335,7 +386,8 @@ func travRows(d *sessionData, board int) []travRow {
 		if !in {
 			continue
 		}
-		row := travRow{Round: seat.Round, Table: seat.Table, NS: seat.NS, EW: seat.EW, NSNames: d.Pairs[seat.NS], EWNames: d.Pairs[seat.EW]}
+		row := travRow{Round: seat.Round, Table: seat.Table, NS: seat.NS, EW: seat.EW, NSNames: d.Pairs[seat.NS], EWNames: d.Pairs[seat.EW],
+			TableLabel: m.TableLabel(seat.Table), NSLabel: m.Label(seat.NS), EWLabel: m.Label(seat.EW)}
 		if res, ok := have[[2]int{seat.NS, seat.EW}]; ok {
 			if res.AdjNS != nil {
 				row.Adjusted = fmt.Sprintf("%g-%g", *res.AdjNS, *res.AdjEW)
@@ -534,6 +586,7 @@ func scoreSession(d *sessionData) (pairs.SessionResult, error) {
 }
 
 type standing struct {
+	Label   string // "7", or "B7" with sections
 	Place   int
 	Tied    bool
 	Pair    int
@@ -551,14 +604,14 @@ func standings(d *sessionData) ([][]standing, string, error) {
 	}
 	m := d.Movement
 	mp := d.Scoring == string(pairs.MethodMP)
-	field := func(from, to int) []standing {
+	field := func(ps []int) []standing {
 		var out []standing
-		for p := from; p <= to; p++ {
+		for _, p := range ps {
 			if p == m.Phantom || d.Pairs[p] == "" {
 				continue
 			}
 			t := res.Totals[p]
-			st := standing{Pair: p, Names: d.Pairs[p], Score: t.Score, Boards: t.Boards}
+			st := standing{Pair: p, Label: m.Label(p), Names: d.Pairs[p], Score: t.Score, Boards: t.Boards}
 			if mp && t.Top > 0 {
 				st.Percent = 100 * t.Score / t.Top
 			}
@@ -579,10 +632,11 @@ func standings(d *sessionData) ([][]standing, string, error) {
 		}
 		return out
 	}
+	ns, ew := m.Lines()
 	if m.TwoFields {
-		return [][]standing{field(1, m.Tables), field(m.Tables+1, 2*m.Tables)}, "", nil
+		return [][]standing{field(ns), field(ew)}, "", nil
 	}
-	return [][]standing{field(1, m.Pairs)}, "", nil
+	return [][]standing{field(ns)}, "", nil
 }
 
 func (s *Server) results(w http.ResponseWriter, r *http.Request) {

@@ -70,6 +70,17 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
 - **Movement choice** (`movement.Options`): for P pairs and a session of N boards, list the candidates
   best first. A complete Mitchell when there are 5+ tables (odd number of tables: every round; even: a
   skip Mitchell, T-1 rounds), then a complete Howell, then reduced ones. The director picks one.
+- **Sections and the deal** (`movement.Layouts`, `Advise`; page "Раздавания"): a large field plays in
+  sections A, B…, each a Mitchell of the same rounds on **the same deals** (its own copy), scored across
+  the whole field. A Mitchell section of T tables needs T sets, so a section layout needs
+  copies = sections and boards 1..(largest section's tables × boards per round). Layouts are ranked by
+  boards closest to the target, then the most comparisons per board (sections × rounds), then fewer
+  sections, then fewer moves; sections are 7–16 tables. Before the day the TD gives the expected range of
+  pairs and the boards a pair plays, and gets the deals worth making: the cheapest that seats the expected
+  maximum (60 pairs, 26 boards: 2 × boards 1–30, good down to 51 pairs), then larger ones reaching further
+  down. What was dealt is recorded, and the session's layouts keep to it (56 pairs: 2 × 14 tables, 13 × 2).
+  The session's movement is the sections combined (`movement.Combine`): tables and pairs numbered on, shown
+  as "B7", boards moving within their section; `Movement.Section(i)` gives a section back for Bridgemate.
 - **Howell** for 8+ pairs comes from a cyclic Room square, so it needs one set of boards and every table
   moves its boards on by one each round. 4 and 6 pairs have no such square; they get a round robin
   with duplicated boards (a dealing machine), as does any size on request. Odd counts get a phantom.

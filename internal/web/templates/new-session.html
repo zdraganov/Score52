@@ -8,6 +8,28 @@
   <label title="Колко копия на всеки комплект раздавания има: 1, ако се раздават на масите">Комплекти <input type="number" name="copies" value="{{.Data.Copies}}" min="1" max="99" class="num"></label>
   <button class="secondary">Покажи</button>
 </form>
+{{with .Data.Layouts}}
+<h2>На секции</h2>
+<p class="muted">Всяка секция е Мичъл на същите раздавания (свое копие), резултатите се сравняват в цялото поле.{{with $.Data.Deal}}{{if .PerCopy}} В границите на раздаденото: {{.Copies}} × раздавания 1–{{.PerCopy}}.{{end}}{{end}}</p>
+<div class="options">
+{{range $i, $l := .}}
+<form method="post" action="/e/{{$.EventID}}/sessions" class="card option{{if eq $i 0}} best{{end}}">
+  <input type="hidden" name="t" value="{{$.Token}}">
+  <input type="hidden" name="kind" value="sections">
+  <input type="hidden" name="stage" value="{{$.Data.Stage}}">
+  <input type="hidden" name="sections" value="{{range $k, $x := $l.Sections}}{{if $k}},{{end}}{{$x.Tables}}{{end}}">
+  <input type="hidden" name="rounds" value="{{$l.Rounds}}">
+  <input type="hidden" name="bpr" value="{{$l.BoardsPerRound}}">
+  <h3>{{len $l.Sections}} {{if eq (len $l.Sections) 1}}секция{{else}}секции{{end}}{{if eq $i 0}} <span class="badge good">препоръчано</span>{{end}}</h3>
+  <p class="big">{{$l.Boards}} раздавания</p>
+  <p class="muted">{{range $k, $x := $l.Sections}}{{if $k}} · {{end}}{{$x.Letter}}: {{$x.Tables}} маси{{end}}<br>{{$l.Rounds}} рунда × {{$l.BoardsPerRound}} · всяко раздаване се играе {{$l.Played}} пъти<br>трябват {{$l.Copies}} × раздавания 1–{{$l.BoardsPerCopy}}</p>
+  <label>Точкуване <select name="method">{{range $k, $v := $.Data.Methods}}<option value="{{$k}}"{{if eq $k $.Data.Method}} selected{{end}}>{{$v}}</option>{{end}}</select></label>
+  <button>Избери</button>
+</form>
+{{end}}
+</div>
+<h2>В една секция</h2>
+{{end}}
 {{with .Data.Options}}
 <p class="muted">Подредени от най-подходящото: Мичъл, когато масите стигат, иначе Хауел. {{if eq $.Data.Copies 1}}С един комплект раздавания: при Хауел раздаванията слизат с една маса или почиват на стойка, а при малък Хауел масите си поделят комплекта.{{else}}С {{$.Data.Copies}} копия на комплектите.{{end}}</p>
 <div class="options">

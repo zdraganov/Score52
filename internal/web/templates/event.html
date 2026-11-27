@@ -32,6 +32,7 @@
   </ul>
   <p class="actions"><a class="button" href="/e/{{$.EventID}}/standings">Класиране и финали</a></p>
   {{else}}<p class="muted">Няма сесии.</p>{{end}}
+  <p><a class="button secondary" href="/e/{{.EventID}}/deal">Раздавания – какво да се раздаде предварително</a></p>
   {{if ge (len .Data.Entries) 4}}<p><a class="button{{if .Data.Sessions}} secondary{{end}}" href="/e/{{.EventID}}/new-session">+ Сесия на квалификацията</a></p>{{else}}<p class="muted">За сесия трябват поне 4 двойки.</p>{{end}}
 </section>
 </div>

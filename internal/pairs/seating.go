@@ -54,8 +54,8 @@ func fields(m movement.Movement) [][]int {
 		}
 		return f
 	}
-	if m.TwoFields {
-		return [][]int{all(1, m.Tables), all(m.Tables+1, 2*m.Tables)}
+	if ns, ew := m.Lines(); m.TwoFields {
+		return [][]int{ns, ew}
 	}
 	return [][]int{all(1, m.Pairs)}
 }

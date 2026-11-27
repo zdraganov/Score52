@@ -85,6 +85,7 @@ const (
 	MetaBridgeBG  = "bridgebg_tournament"
 	MetaPairsPlan = "pairs_plan"   // JSON: stages, finals, carry-over
 	MetaCopies    = "board_copies" // copies of each board set the club has (1: one set, as dealt at the tables)
+	MetaDeal      = "deal"         // JSON: the pairs expected, the boards wanted, and what was dealt for them
 )
 
 func (s *Store) SetMeta(key, value string) error {

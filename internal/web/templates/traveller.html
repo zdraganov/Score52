@@ -13,8 +13,8 @@
 <tbody>
 {{range $i, $r := .Data.Rows}}
 <tr{{if $r.Err}} class="bad"{{end}}>
-  <td>{{$r.Round}}</td><td>{{$r.Table}}</td>
-  <td title="{{$r.NSNames}}"><b>{{$r.NS}}</b></td><td title="{{$r.EWNames}}"><b>{{$r.EW}}</b></td>
+  <td>{{$r.Round}}</td><td>{{$r.TableLabel}}</td>
+  <td title="{{$r.NSNames}}"><b>{{$r.NSLabel}}</b></td><td title="{{$r.EWNames}}"><b>{{$r.EWLabel}}</b></td>
   <td><input name="c{{$i}}" value="{{$r.Contract}}" placeholder="4S" class="contract" autocomplete="off"{{if eq $i 0}} autofocus{{end}}></td>
   <td><select name="d{{$i}}"><option></option>{{range $d := "N E S W" | fields}}<option{{if eq $d $r.Declarer}} selected{{end}}>{{$d}}</option>{{end}}</select></td>
   <td><input name="r{{$i}}" value="{{$r.Result}}" placeholder="=" class="res" autocomplete="off"></td>
