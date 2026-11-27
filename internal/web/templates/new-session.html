@@ -5,16 +5,18 @@
   {{if .Data.Stage}}<input type="hidden" name="stage" value="{{.Data.Stage}}">{{end}}
   <label>Раздавания от <input type="number" name="min" value="{{.Data.Min}}" min="1" max="127" class="num"></label>
   <label>до <input type="number" name="max" value="{{.Data.Max}}" min="1" max="127" class="num"></label>
+  <label title="Колко копия на всеки комплект раздавания има: 1, ако се раздават на масите">Комплекти <input type="number" name="copies" value="{{.Data.Copies}}" min="1" max="99" class="num"></label>
   <button class="secondary">Покажи</button>
 </form>
 {{with .Data.Options}}
-<p class="muted">Подредени от най-подходящото: Мичъл, когато масите стигат, иначе Хауел.</p>
+<p class="muted">Подредени от най-подходящото: Мичъл, когато масите стигат, иначе Хауел. {{if eq $.Data.Copies 1}}С един комплект раздавания: при Хауел раздаванията слизат с една маса или почиват на стойка, а при малък Хауел масите си поделят комплекта.{{else}}С {{$.Data.Copies}} копия на комплектите.{{end}}</p>
 <div class="options">
 {{range $i, $o := .}}
 <form method="post" action="/e/{{$.EventID}}/sessions" class="card option{{if eq $i 0}} best{{end}}">
   <input type="hidden" name="t" value="{{$.Token}}">
   <input type="hidden" name="kind" value="{{$o.Kind}}">
   <input type="hidden" name="stage" value="{{$.Data.Stage}}">
+  <input type="hidden" name="copies" value="{{$.Data.Copies}}">
   <input type="hidden" name="tables" value="{{$o.Tables}}">
   <input type="hidden" name="rounds" value="{{$o.Rounds}}">
   <input type="hidden" name="bpr" value="{{$o.BoardsPerRound}}">

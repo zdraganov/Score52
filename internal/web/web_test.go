@@ -29,6 +29,7 @@ func (c *client) get(path string) (string, string) {
 	if r.StatusCode != 200 {
 		c.t.Fatalf("GET %s: %d\n%s", path, r.StatusCode, b)
 	}
+	c.rendered(path, b)
 	return string(b), r.Request.URL.Path
 }
 
@@ -44,7 +45,49 @@ func (c *client) post(path string, v url.Values) (string, string) {
 	if r.StatusCode != 200 {
 		c.t.Fatalf("POST %s: %d\n%s", path, r.StatusCode, b)
 	}
+	c.rendered(path, b)
 	return string(b), r.Request.URL.Path
+}
+
+// rendered fails on a template error, which html/template writes into the page instead of failing.
+func (c *client) rendered(path string, b []byte) {
+	c.t.Helper()
+	if i := strings.Index(string(b), "<p>template: "); i >= 0 {
+		c.t.Fatalf("%s: %s", path, string(b)[i:min(len(b), i+300)])
+	}
+}
+
+// The plan says where the boards go: down a table or to the relay stand, or which tables share a set.
+func TestPlanBoardHints(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	for _, tc := range []struct {
+		pairs int
+		kind  string
+		want  []string
+	}{{6, "howell-shared", []string{"Хауел с поделени", "дели с маса"}}, {8, "howell", []string{"→ маса", "→ стойка"}}} {
+		_, ev := c.post("/events", url.Values{"title": {"Хауел"}, "date": {"2026-11-29"}})
+		for i := 0; i < tc.pairs; i++ {
+			c.post(ev+"/pairs", url.Values{"name1": {"А"}, "name2": {"Б"}})
+		}
+		page, _ := c.get(ev + "/new-session?min=10&max=30&copies=1")
+		if !strings.Contains(page, `name="kind" value="`+tc.kind+`"`) {
+			t.Fatalf("%d pairs, one set: no %s offered", tc.pairs, tc.kind)
+		}
+		m := regexp.MustCompile(`name="kind" value="` + tc.kind + `"[\s\S]*?name="tables" value="(\d+)"[\s\S]*?name="rounds" value="(\d+)"[\s\S]*?name="bpr" value="(\d+)"`).FindStringSubmatch(page)
+		plan, _ := c.post(ev+"/sessions", url.Values{"kind": {tc.kind}, "tables": {m[1]}, "rounds": {m[2]}, "bpr": {m[3]}, "method": {"mp"}, "copies": {"1"}})
+		for _, w := range tc.want {
+			if !strings.Contains(plan, w) {
+				t.Errorf("%d pairs: the plan doesn't say %q", tc.pairs, w)
+			}
+		}
+	}
 }
 
 func TestPairsFlow(t *testing.T) {
