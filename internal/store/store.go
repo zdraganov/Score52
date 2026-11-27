@@ -146,6 +146,46 @@ func (s *Store) AddEntry(name string, seed int, players []int64) (int64, error) 
 	return id, err
 }
 
+// DeleteEntry removes a pair or team and its players. Refused once a session seats it.
+func (s *Store) DeleteEntry(id int64) error {
+	sessions, err := s.Sessions()
+	if err != nil {
+		return err
+	}
+	for _, x := range sessions {
+		for _, e := range x.Seating {
+			if e == id {
+				return fmt.Errorf("the entry plays in session %s", x.Slot)
+			}
+		}
+	}
+	return s.tx(func(tx *sql.Tx) error {
+		rows, err := tx.Query(`SELECT player_id FROM entry_players WHERE entry_id = ?`, id)
+		if err != nil {
+			return err
+		}
+		var players []int64
+		for rows.Next() {
+			var p int64
+			if err := rows.Scan(&p); err != nil {
+				rows.Close()
+				return err
+			}
+			players = append(players, p)
+		}
+		rows.Close()
+		if _, err := tx.Exec(`DELETE FROM entries WHERE id = ?`, id); err != nil {
+			return err
+		}
+		for _, p := range players {
+			if _, err := tx.Exec(`DELETE FROM players WHERE id = ? AND NOT EXISTS (SELECT 1 FROM entry_players WHERE player_id = ?)`, p, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // Entries are all pairs or teams with their players, by id.
 func (s *Store) Entries() ([]Entry, error) {
 	rows, err := s.db.Query(`SELECT e.id, e.name, e.seed, p.id, p.name, p.federation_id, p.club

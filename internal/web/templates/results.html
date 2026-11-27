@@ -1,0 +1,21 @@
+{{define "content"}}
+{{$s := .Data.S}}
+<h1>Класиране <span class="muted small">{{$s.Name}} · {{$s.MethodName}}</span></h1>
+<p class="actions">
+  <a class="button secondary" href="/e/{{.EventID}}/s/{{$s.Slot}}">Сесията</a>
+  <a class="button secondary" href="/e/{{.EventID}}/s/{{$s.Slot}}/usebio.xml">USEBIO за bridge.bg</a>
+  <button class="secondary" onclick="print()">Печат</button>
+  {{if .Data.Missing}}<span class="alert inline">Липсват {{.Data.Missing}} резултата – класирането е временно.</span>{{end}}
+</p>
+{{range $f, $rows := .Data.Fields}}
+<section class="card">
+{{with index $.Data.FieldNames $f}}<h2>{{.}}</h2>{{end}}
+<table class="tbl rank">
+<thead><tr><th>Място</th><th>№</th><th>Двойка</th><th class="num">{{if $.Data.MP}}MP{{else}}IMP{{end}}</th>{{if $.Data.MP}}<th class="num">%</th>{{end}}<th class="num">Раздавания</th></tr></thead>
+<tbody>
+{{range $rows}}<tr><td>{{.Place}}{{if .Tied}}={{end}}</td><td>{{.Pair}}</td><td>{{.Names}}</td><td class="num">{{num .Score}}</td>{{if $.Data.MP}}<td class="num"><b>{{pct .Percent}}</b></td>{{end}}<td class="num">{{.Boards}}</td></tr>{{end}}
+</tbody>
+</table>
+</section>
+{{end}}
+{{end}}
