@@ -92,6 +92,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /e/{id}/s/{slot}/b/{board}", s.saveTraveller)
 	mux.HandleFunc("GET /e/{id}/s/{slot}/results", s.results)
 	mux.HandleFunc("GET /e/{id}/s/{slot}/usebio.xml", s.usebio)
+	mux.HandleFunc("GET /e/{id}/standings", s.standings)
+	mux.HandleFunc("POST /e/{id}/finals", s.planFinals)
+	mux.HandleFunc("GET /e/{id}/stage/{stage}/usebio.xml", s.stageUsebio)
 	return s.guard(mux)
 }
 
@@ -338,6 +341,15 @@ func suits(c string) template.HTML {
 }
 
 var funcs = template.FuncMap{
+	"deref":  func(v *float64) float64 { return *v },
+	"pct100": func(v float64) string { return strconv.FormatFloat(100*v, 'f', -1, 64) },
+	"dict": func(kv ...any) map[string]any {
+		m := map[string]any{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			m[kv[i].(string)] = kv[i+1]
+		}
+		return m
+	},
 	"names":  names,
 	"suits":  suits,
 	"fields": strings.Fields,

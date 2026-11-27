@@ -40,7 +40,13 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	entries, _ := st.Entries()
+	stage := r.URL.Query().Get("stage")
+	sessions, _ := st.Sessions()
+	entries, _, err := stageEntries(st, sessions, stage)
+	if err != nil {
+		s.fail(w, http.StatusBadRequest, err)
+		return
+	}
 	if len(entries) < 4 {
 		s.fail(w, http.StatusBadRequest, errors.New("за сесия трябват поне 4 двойки"))
 		return
@@ -57,8 +63,16 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	for _, o := range movement.Options(len(entries), lo, hi) {
 		opts = append(opts, option{Option: o, Name: kindNames[o.Kind]})
 	}
+	earlier := stageSessions(sessions, stage)
+	method := "mp"
+	if len(earlier) > 0 { // a stage keeps its scoring
+		method = earlier[0].Scoring
+	} else if q := stageSessions(sessions, ""); stage != "" && len(q) > 0 {
+		method = q[0].Scoring
+	}
 	p.Title = "Нова сесия"
-	p.Data = map[string]any{"Pairs": len(entries), "Min": lo, "Max": hi, "Options": opts, "Methods": methodNames}
+	p.Data = map[string]any{"Pairs": len(entries), "Min": lo, "Max": hi, "Options": opts, "Methods": methodNames,
+		"Stage": stage, "StageName": stageName(stage), "Number": len(earlier) + 1, "Method": method, "Mixed": len(earlier) > 0}
 	s.render(w, "new-session", p)
 }
 
@@ -91,8 +105,17 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	entries, _ := st.Entries()
+	stage := r.PostFormValue("stage")
+	if stage != "" && (len(stage) != 1 || stage[0] < 'A' || stage[0] > 'D') {
+		s.fail(w, http.StatusBadRequest, errors.New("невалиден етап"))
+		return
+	}
 	sessions, _ := st.Sessions()
+	order, _, err := stageEntries(st, sessions, stage)
+	if err != nil {
+		s.fail(w, http.StatusBadRequest, err)
+		return
+	}
 	tables, _ := strconv.Atoi(r.PostFormValue("tables"))
 	rounds, _ := strconv.Atoi(r.PostFormValue("rounds"))
 	bpr, _ := strconv.Atoi(r.PostFormValue("bpr"))
@@ -101,23 +124,18 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusBadRequest, errors.New("невалидни настройки на сесията"))
 		return
 	}
-	m, err := buildMovement(movement.Kind(r.PostFormValue("kind")), len(entries), tables, rounds)
+	m, err := buildMovement(movement.Kind(r.PostFormValue("kind")), len(order), tables, rounds)
 	if err != nil {
 		s.fail(w, http.StatusBadRequest, err)
 		return
 	}
-	// pairs take the movement's numbers in the order they were entered; the phantom's place stays 0
-	seating := make([]int64, m.Pairs)
-	at := 0
-	for i := range seating {
-		if i+1 == m.Phantom {
-			continue
-		}
-		seating[i] = entries[at].ID
-		at++
+	earlier := stageSessions(sessions, stage)
+	n := len(earlier) + 1
+	x := store.Session{Slot: fmt.Sprintf("s%d", n), Name: fmt.Sprintf("Сесия %d", n), Stage: stage, Scoring: method, BoardsPerRound: bpr, Movement: m,
+		Seating: seatSession(m, order, earlier, uint64(len(sessions)+1))}
+	if stage != "" {
+		x.Slot, x.Name = fmt.Sprintf("f%s%d", stage, n), fmt.Sprintf("Финал %s, сесия %d", stage, n)
 	}
-	n := len(sessions) + 1
-	x := store.Session{Slot: fmt.Sprintf("s%d", n), Name: fmt.Sprintf("Сесия %d", n), Scoring: method, BoardsPerRound: bpr, Movement: m, Seating: seating}
 	if _, err := st.SaveSession(x); err != nil {
 		s.fail(w, http.StatusInternalServerError, err)
 		return
@@ -157,12 +175,22 @@ func (s *Server) loadSession(w http.ResponseWriter, r *http.Request) (*store.Sto
 		s.fail(w, http.StatusNotFound, errors.New("няма такава сесия"))
 		return nil, p, nil, false
 	}
+	d, err := sessionDataOf(st, *x)
+	if err != nil {
+		s.fail(w, http.StatusInternalServerError, err)
+		return nil, p, nil, false
+	}
+	return st, p, d, true
+}
+
+// sessionDataOf gathers what a session's pages and totals need.
+func sessionDataOf(st *store.Store, x store.Session) (*sessionData, error) {
 	entries, _ := st.Entries()
 	byID := map[int64]store.Entry{}
 	for _, e := range entries {
 		byID[e.ID] = e
 	}
-	d := &sessionData{Session: *x, KindName: kindNames[x.Movement.Kind], MethodName: methodNames[x.Scoring],
+	d := &sessionData{Session: x, KindName: kindNames[x.Movement.Kind], MethodName: methodNames[x.Scoring],
 		Pairs: map[int]string{}, Expected: map[int]int{}, Entered: map[int]int{}}
 	for i, id := range x.Seating {
 		if id != 0 {
@@ -182,14 +210,14 @@ func (s *Server) loadSession(w http.ResponseWriter, r *http.Request) (*store.Sto
 		}
 	}
 	sort.Ints(d.Boards)
+	var err error
 	if d.Results, err = st.Results(x.ID); err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return nil, p, nil, false
+		return nil, err
 	}
 	for _, res := range d.Results {
 		d.Entered[res.Board]++
 	}
-	return st, p, d, true
+	return d, nil
 }
 
 func boardsOf(seat movement.Seat, bpr, first int) []int {
@@ -583,6 +611,23 @@ func (s *Server) usebio(w http.ResponseWriter, r *http.Request) {
 			ev.Pairs = append(ev.Pairs, pr)
 		}
 	}
+	ev.Boards = sessionBoards(d, res)
+	var buf bytes.Buffer
+	if err := usebio.WritePairs(&buf, ev); err != nil {
+		s.fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	// bridge.bg slots: a qualifying session is .s1, .s2...; a final's file (.f1 for A) is the stage's,
+	// with the carry-over in it, so a final session's own file is only for the director's records
+	name := "." + d.Slot
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s%s.xml"`, fileBase(st, p.EventID), name))
+	w.Write(buf.Bytes())
+}
+
+// sessionBoards are a session's travellers for USEBIO, with each line's points.
+func sessionBoards(d *sessionData, res pairs.SessionResult) []usebio.Board {
+	var out []usebio.Board
 	points := map[[3]int][2]float64{}
 	for _, l := range res.Lines {
 		points[[3]int{l.Board, l.NS, l.EW}] = [2]float64{l.NSPoints, l.EWPoints}
@@ -606,17 +651,10 @@ func (s *Server) usebio(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, n := range d.Boards {
 		if b := byBoard[n]; b != nil {
-			ev.Boards = append(ev.Boards, *b)
+			out = append(out, *b)
 		}
 	}
-	var buf bytes.Buffer
-	if err := usebio.WritePairs(&buf, ev); err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.%s.xml"`, p.EventID, d.Slot))
-	w.Write(buf.Bytes())
+	return out
 }
 
 func must(s string, _ error) string { return s }

@@ -96,4 +96,8 @@ CREATE TABLE team_ops (
 	at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 `,
+	`
+-- a session belongs to the qualifying ('') or to a final ('A', 'B'...)
+ALTER TABLE sessions ADD COLUMN stage TEXT NOT NULL DEFAULT '';
+`,
 }
