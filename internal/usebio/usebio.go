@@ -36,8 +36,10 @@ type PairsEvent struct {
 	Date    time.Time
 	Version string // Score52's version
 	Method  Method
-	Pairs   []Pair
-	Boards  []Board
+	// CarryWeight: a final weighted by percentage, the qualifying's share of the total (0.25); 0 otherwise
+	CarryWeight float64
+	Pairs       []Pair
+	Boards      []Board
 }
 
 type Pair struct {
@@ -62,10 +64,14 @@ type SessionResult struct {
 	Boards  int
 }
 
-// CarryParts split a final's total: Carried + Own = the total (CARRY_OVER, SESSION_SCORE).
+// CarryParts split a final's total: Carried + Own = the total (CARRY_OVER, SESSION_SCORE). Qualifying and
+// Final are the plain results they come from (QUALIFYING_PERCENTAGE, FINAL_PERCENTAGE), which bridge.bg
+// shows under the weights instead of the parts.
 type CarryParts struct {
-	Carried float64
-	Own     float64
+	Carried    float64
+	Own        float64
+	Qualifying float64
+	Final      float64
 }
 
 type Board struct {
@@ -132,6 +138,7 @@ type xEvent struct {
 	ProgramVer   string   `xml:"PROGRAM_VERSION,omitempty"`
 	Date         string   `xml:"DATE,omitempty"`
 	BoardScoring string   `xml:"BOARD_SCORING_METHOD,omitempty"`
+	CarryWeight  string   `xml:"CARRY_WEIGHT,omitempty"`
 	Participants xPart    `xml:"PARTICIPANTS"`
 	Matches      []xMatch `xml:"MATCH,omitempty"`
 	Boards       []xBoard `xml:"BOARD,omitempty"`
@@ -160,6 +167,8 @@ type xPair struct {
 	SessionBoards int    `xml:"SESSION_BOARDS,omitempty"`
 	SessionScore  string `xml:"SESSION_SCORE,omitempty"`
 	CarryOver     string `xml:"CARRY_OVER,omitempty"`
+	QualifyingPct string `xml:"QUALIFYING_PERCENTAGE,omitempty"`
+	FinalPct      string `xml:"FINAL_PERCENTAGE,omitempty"`
 }
 
 type xTeam struct {
@@ -244,6 +253,9 @@ func WritePairs(w io.Writer, e PairsEvent) error {
 		Type: typ, Description: e.Title, ProgramName: Program, ProgramVer: e.Version, Date: date(e.Date),
 		BoardScoring: string(e.Method),
 	}}
+	if e.CarryWeight > 0 {
+		x.Event.CarryWeight = strconv.FormatFloat(e.CarryWeight, 'f', -1, 64)
+	}
 	for _, p := range e.Pairs {
 		xp := xPair{Number: p.Number, Direction: p.Direction, Players: players(p.Players), Place: place(p.Place, p.Tied),
 			Total: num(p.Score), Boards: p.Boards}
@@ -255,6 +267,9 @@ func WritePairs(w io.Writer, e PairsEvent) error {
 		}
 		if p.Carry != nil {
 			xp.CarryOver, xp.SessionScore = num(p.Carry.Carried), num(p.Carry.Own)
+			if e.CarryWeight > 0 {
+				xp.QualifyingPct, xp.FinalPct = num(p.Carry.Qualifying), num(p.Carry.Final)
+			}
 		}
 		x.Event.Participants.Pairs = append(x.Event.Participants.Pairs, xp)
 	}
