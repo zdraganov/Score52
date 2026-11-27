@@ -1,13 +1,18 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -163,6 +168,55 @@ func TestStagesFlow(t *testing.T) {
 		t.Error("a two-session final's file should hold the ranking only")
 	}
 
+	// the files for bridge.bg, by slot
+	file := func(path string) (string, string) {
+		t.Helper()
+		r, err := c.http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		b, _ := io.ReadAll(r.Body)
+		_, name, _ := strings.Cut(r.Header.Get("Content-Disposition"), `filename="`)
+		name = strings.TrimSuffix(name, `"`)
+		return name[strings.Index(name, "."):], string(b)
+	}
+	base := strings.TrimPrefix(ev, "/e/")
+	for _, f := range []struct{ path, name string }{
+		{s1 + "/usebio.xml", ".s1.xml"}, {s2 + "/usebio.xml", ".s2.xml"}, {ev + "/stage/q/usebio.xml", ".s2.xml"},
+		{fa + "/usebio.xml", ".f1s1.xml"}, {fa2 + "/usebio.xml", ".f1s2.xml"}, {ev + "/stage/A/usebio.xml", ".f1.xml"},
+	} {
+		if name, _ := file(f.path); name != f.name {
+			t.Errorf("%s: file %s%s, want %s", f.path, base, name, f.name)
+		}
+	}
+	// session 2's file holds the qualifying so far (both sessions) and session 2 alone beside it
+	_, q2 := file(s2 + "/usebio.xml")
+	if !strings.Contains(q2, fmt.Sprintf("<PERCENTAGE>%.2f</PERCENTAGE>", q.Rows[0].Total.Total)) || !strings.Contains(q2, "<SESSION_PERCENTAGE>") ||
+		!strings.Contains(q2, "<BOARD>") || strings.Contains(q2, "<CARRY_OVER>") {
+		t.Errorf("session 2 file:\n%s", q2[:min(len(q2), 1200)])
+	}
+	// a final session's file: the final so far with the carry-over, and its boards
+	_, f2 := file(fa2 + "/usebio.xml")
+	if !strings.Contains(f2, "<CARRY_OVER>") || !strings.Contains(f2, "<SESSION_PERCENTAGE>") || !strings.Contains(f2, "<BOARD>") {
+		t.Errorf("final session 2 file:\n%s", f2[:min(len(f2), 1200)])
+	}
+	// bridge.bg reads them as Magic Contest's: "Сесия | Общо" and "Финал | Пренесено | Общо"
+	if rows := siteRanking(t, q2); rows != nil {
+		if rows[0]["SessionPercentage"] == nil || rows[0]["NrBoardsSession"] == nil || rows[0]["ScoreCarryOver"] != nil {
+			t.Errorf("site reads session 2 as %v", rows[0])
+		}
+	}
+	_, fw := file(ev + "/stage/A/usebio.xml")
+	if rows := siteRanking(t, fw); rows != nil {
+		w := fr.Rows[0]
+		carried := 0.25 * w.Total.Carry
+		if rows[0]["ScoreCarryOver"] != fmt.Sprintf("%.2f", carried) || rows[0]["SessionScoreMP"] != fmt.Sprintf("%.2f", w.Total.Total-carried) ||
+			rows[0]["TotalScoreMP"] != fmt.Sprintf("%.2f", w.Total.Total) || rows[0]["NrBoardsSession"] != nil {
+			t.Errorf("site reads final A's winner as %v", rows[0])
+		}
+	}
+
 	// planning again is refused once a final has a session
 	r, _ = c.http.PostForm(ts.URL+ev+"/finals", url.Values{"t": {s.token}, "nA": {"4"}, "carry": {"0"}})
 	if r.StatusCode != 400 {
@@ -176,4 +230,37 @@ func ints(v []int64) []int {
 		out[i] = int(x)
 	}
 	return out
+}
+
+// siteRanking is bridge.bg's UsebioParser's ranking of a file: its repository next to this one, or
+// BRIDGEBG_DIR (a checkout with the session and carry-over fields). nil when it can't run.
+func siteRanking(t *testing.T, xml string) []map[string]any {
+	t.Helper()
+	site := os.Getenv("BRIDGEBG_DIR")
+	if site == "" {
+		site = "../../../bridge.bg"
+	}
+	dir, _ := filepath.Abs(filepath.Join(site, "next/src/Results"))
+	if _, err := os.Stat(dir); err != nil {
+		t.Log("no bridge.bg repository: not checked against the site")
+		return nil
+	}
+	if _, err := exec.LookPath("php"); err != nil {
+		t.Log("no php: not checked against the site")
+		return nil
+	}
+	src, err := os.ReadFile(filepath.Join(dir, "UsebioParser.php"))
+	if err != nil || !strings.Contains(string(src), "CARRY_OVER") {
+		t.Log("this bridge.bg doesn't read session results yet: set BRIDGEBG_DIR to a newer checkout")
+		return nil
+	}
+	f := filepath.Join(t.TempDir(), "1.xml")
+	os.WriteFile(f, []byte(xml), 0o644)
+	out, err := exec.Command("php", "-r", `require $argv[1]."/PbnParser.php"; require $argv[1]."/UsebioParser.php";
+		echo json_encode((new App\Results\UsebioParser())->parse($argv[2])["ranking"] ?? null);`, dir, f).CombinedOutput()
+	var rows []map[string]any
+	if err != nil || json.Unmarshal(out, &rows) != nil || len(rows) == 0 {
+		t.Fatalf("site parser: %v\n%s", err, out)
+	}
+	return rows
 }
