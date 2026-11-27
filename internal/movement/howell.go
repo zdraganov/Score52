@@ -1,15 +1,18 @@
 package movement
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // NewHowell builds a Howell for `pairs` pairs (an odd number gets a phantom) over `rounds` rounds:
 // all n-1 rounds for a complete Howell, fewer for a reduced one, where each pair meets that many
 // of the others.
 //
-// From 8 pairs on the movement comes from a cyclic Room square, so the board sets are shared and
-// only one copy of the boards is needed: every round each table moves its set on by one and the
-// pairs move by a fixed pattern. A Room square does not exist for 4 or 6 pairs; they (and
-// duplicated=true) get a round robin in which all tables play the same set (duplicated boards).
+// With one set of boards (duplicated=false): from 8 pairs on the movement comes from a cyclic Room
+// square, every table with its own set, numbered so the boards move down one table (or to the relay
+// stand); 4 and 6 pairs have no such square and share boards between two tables (HowellShared).
+// duplicated=true: a round robin where every table plays the same set, for copies of the boards.
 func NewHowell(pairs, rounds int, duplicated bool) (Movement, error) {
 	phantom := 0
 	if pairs%2 == 1 {
@@ -24,14 +27,20 @@ func NewHowell(pairs, rounds int, duplicated bool) (Movement, error) {
 		return Movement{}, fmt.Errorf("a Howell for %d pairs plays 1..%d rounds, not %d", pairs, s, rounds)
 	}
 	var m Movement
-	if !duplicated && s >= 7 {
+	switch {
+	case duplicated:
+		m = roundRobin(s, rounds)
+	case s >= 7:
 		starter, adder := cyclicRoom(s)
 		if adder == nil {
 			return Movement{}, fmt.Errorf("no shared-board Howell found for %d pairs", pairs)
 		}
 		m = roomHowell(s, rounds, starter, adder)
-	} else {
-		m = roundRobin(s, rounds)
+	default:
+		var ok bool
+		if m, ok = sharedHowell(s, rounds); !ok {
+			return Movement{}, fmt.Errorf("no Howell with shared boards found for %d pairs", pairs)
+		}
 	}
 	m.Phantom = phantom
 	return m, m.Validate()
@@ -142,21 +151,121 @@ func findAdder(s int, starter [][2]int) []int {
 	return a
 }
 
-// roomHowell lays the Room square out as a movement: table i+1 holds the starter's pair i, symbol v
-// is pair v+1 and ∞ is pair s+1 (it stays at table 1, NS and EW in turn).
+// roomHowell lays the Room square out as a movement: the starter's pair i plays at a table with its
+// column a_i, symbol v is pair v+1 and ∞ is pair s+1 (it stays put, NS and EW in turn).
+//
+// A table with column a plays set a+r in round r, so a set passes from the table with column a to the
+// one with column a-1. The tables are numbered by column, starting after a gap, so the boards move down
+// one table, or to the relay stand where a column is missing; sets are numbered so that table 1 plays
+// set 1 in round 1.
 func roomHowell(s, rounds int, starter [][2]int, a []int) Movement {
-	m := Movement{Kind: Howell, Pairs: s + 1, Tables: len(starter) + 1, Rounds: rounds, Sets: s}
+	used := map[int]bool{}
+	for _, c := range a {
+		used[c] = true
+	}
+	start := a[0]
+	for _, c := range a {
+		if !used[mod(c-1, s)] {
+			start = c
+			break
+		}
+	}
+	order := make([]int, len(a)) // starter index (0 = ∞) by table, in column order from start
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(x, y int) bool { return mod(a[order[x]]-start, s) < mod(a[order[y]]-start, s) })
+	tableOf := make([]int, len(a))
+	for t, i := range order {
+		tableOf[i] = t + 1
+	}
+	set := func(c int) int { return mod(c-start, s) + 1 }
+
+	m := Movement{Kind: Howell, Pairs: s + 1, Tables: len(a), Rounds: rounds, Sets: s}
 	for r := 0; r < rounds; r++ {
 		ns, ew := s+1, r+1
 		if r%2 == 1 {
 			ns, ew = ew, ns
 		}
-		m.Seats = append(m.Seats, Seat{Round: r + 1, Table: 1, NS: ns, EW: ew, Set: mod(a[0]+r, s) + 1})
+		m.Seats = append(m.Seats, Seat{Round: r + 1, Table: tableOf[0], NS: ns, EW: ew, Set: set(a[0] + r)})
 		for i, p := range starter {
-			m.Seats = append(m.Seats, Seat{Round: r + 1, Table: i + 2, NS: mod(p[0]+r, s) + 1, EW: mod(p[1]+r, s) + 1, Set: mod(a[i+1]+r, s) + 1})
+			m.Seats = append(m.Seats, Seat{Round: r + 1, Table: tableOf[i+1], NS: mod(p[0]+r, s) + 1, EW: mod(p[1]+r, s) + 1, Set: set(a[i+1] + r)})
 		}
 	}
+	sort.Slice(m.Seats, func(x, y int) bool {
+		return m.Seats[x].Round < m.Seats[y].Round || m.Seats[x].Round == m.Seats[y].Round && m.Seats[x].Table < m.Seats[y].Table
+	})
 	return m
+}
+
+// sharedHowell is a small Howell for one set of boards: the circle method's round robin, with sets
+// found by search so that each pair plays each set once and tables share as little as possible: no set
+// at more than two tables in a round, except in as few rounds as can be (one for 6 pairs, where all
+// three tables then pass one set around).
+func sharedHowell(s, rounds int) (Movement, bool) {
+	k := s / 2
+	type match struct{ a, b int }
+	var ms [][]match // by round
+	for r := 0; r < rounds; r++ {
+		row := []match{{s, r}}
+		for i := 1; i <= k; i++ {
+			row = append(row, match{mod(r+i, s), mod(r-i, s)})
+		}
+		ms = append(ms, row)
+	}
+	for crowded := 0; crowded <= rounds; crowded++ { // rounds with a set at 3+ tables
+		sets := make([][]int, rounds)
+		for r := range sets {
+			sets[r] = make([]int, k+1)
+		}
+		seen := map[[2]int]bool{} // pair, set
+		var try func(r, i int, onTable map[int]int, left int) bool
+		try = func(r, i int, onTable map[int]int, left int) bool {
+			if r == rounds {
+				return true
+			}
+			if i == k+1 {
+				for _, n := range onTable {
+					if n > 2 {
+						left--
+						break
+					}
+				}
+				return left >= 0 && try(r+1, 0, map[int]int{}, left)
+			}
+			mt := ms[r][i]
+			for c := 0; c < s; c++ {
+				if onTable[c] >= 2 && left == 0 || seen[[2]int{mt.a, c}] || seen[[2]int{mt.b, c}] {
+					continue
+				}
+				onTable[c]++
+				seen[[2]int{mt.a, c}], seen[[2]int{mt.b, c}] = true, true
+				sets[r][i] = c
+				if try(r, i+1, onTable, left) {
+					return true
+				}
+				onTable[c]--
+				delete(seen, [2]int{mt.a, c})
+				delete(seen, [2]int{mt.b, c})
+			}
+			return false
+		}
+		if !try(0, 0, map[int]int{}, crowded) {
+			continue
+		}
+		m := Movement{Kind: HowellShared, Pairs: s + 1, Tables: k + 1, Rounds: rounds, Sets: s, Shared: true}
+		for r := 0; r < rounds; r++ {
+			for i, mt := range ms[r] {
+				ns, ew := mt.a+1, mt.b+1
+				if i == 0 && r%2 == 1 {
+					ns, ew = ew, ns
+				}
+				m.Seats = append(m.Seats, Seat{Round: r + 1, Table: i + 1, NS: ns, EW: ew, Set: sets[r][i] + 1})
+			}
+		}
+		return m, true
+	}
+	return Movement{}, false
 }
 
 // roundRobin is the circle method: pair s+1 stays at table 1 against pair r, the others pair off

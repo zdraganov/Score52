@@ -19,7 +19,8 @@ var kindNames = map[movement.Kind]string{
 	movement.Mitchell:         "Мичъл",
 	movement.SkipMitchell:     "Мичъл с прескачане",
 	movement.Howell:           "Хауел",
-	movement.HowellDuplicated: "Хауел с дублирани раздавания",
+	movement.HowellDuplicated: "Хауел с копия на раздаванията",
+	movement.HowellShared:     "Хауел с поделени раздавания",
 }
 
 var methodNames = map[string]string{
@@ -57,8 +58,15 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	if hi < lo {
 		hi = lo + 10
 	}
+	copies, _ := strconv.Atoi(r.URL.Query().Get("copies"))
+	if copies < 1 {
+		copies, _ = strconv.Atoi(must(st.Meta(store.MetaCopies)))
+	}
+	if copies < 1 {
+		copies = 1
+	}
 	var opts []option
-	for _, o := range movement.Options(len(entries), lo, hi) {
+	for _, o := range movement.Options(len(entries), lo, hi, copies) {
 		opts = append(opts, option{Option: o, Name: kindNames[o.Kind]})
 	}
 	earlier := stageSessions(sessions, stage)
@@ -70,7 +78,7 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	}
 	p.Title = "Нова сесия"
 	p.Data = map[string]any{"Pairs": len(entries), "Min": lo, "Max": hi, "Options": opts, "Methods": methodNames,
-		"Stage": stage, "StageName": stageName(stage), "Number": len(earlier) + 1, "Method": method, "Mixed": len(earlier) > 0}
+		"Stage": stage, "StageName": stageName(stage), "Number": len(earlier) + 1, "Method": method, "Mixed": len(earlier) > 0, "Copies": copies}
 	s.render(w, "new-session", p)
 }
 
@@ -90,7 +98,7 @@ func buildMovement(kind movement.Kind, pairCount, tables, rounds int) (movement.
 			return m, fmt.Errorf("a Mitchell on %d tables is for %d or %d pairs, not %d", tables, m.Pairs-1, m.Pairs, pairCount)
 		}
 		return m, m.Validate()
-	case movement.Howell:
+	case movement.Howell, movement.HowellShared:
 		return movement.NewHowell(pairCount, rounds, false)
 	case movement.HowellDuplicated:
 		return movement.NewHowell(pairCount, rounds, true)
@@ -126,6 +134,9 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, http.StatusBadRequest, err)
 		return
+	}
+	if c, _ := strconv.Atoi(r.PostFormValue("copies")); c >= 1 { // remembered for the next session
+		st.SetMeta(store.MetaCopies, strconv.Itoa(c))
 	}
 	earlier := stageSessions(sessions, stage)
 	n := len(earlier) + 1
@@ -228,6 +239,8 @@ func boardsOf(seat movement.Seat, bpr, first int) []int {
 
 // planCell is one table in one round of the plan.
 type planCell struct {
+	Next          string // where the boards go after the round
+	Note          string // shared boards
 	NS, EW        int
 	First, Last   int
 	SitOut, Empty bool
@@ -248,8 +261,29 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, seat := range m.Seats {
 		b := boardsOf(seat, d.BoardsPerRound, d.FirstBoard)
-		grid[seat.Round-1][seat.Table-1] = planCell{NS: seat.NS, EW: seat.EW, First: b[0], Last: b[len(b)-1],
-			SitOut: seat.NS == m.Phantom || seat.EW == m.Phantom}
+		c := planCell{NS: seat.NS, EW: seat.EW, First: b[0], Last: b[len(b)-1], SitOut: seat.NS == m.Phantom || seat.EW == m.Phantom}
+		if m.Shared {
+			var with []string
+			for _, s := range m.Round(seat.Round) {
+				if s.Set == seat.Set && s.Table != seat.Table {
+					with = append(with, strconv.Itoa(s.Table))
+				}
+			}
+			if len(with) > 0 {
+				c.Note = "дели с маса " + strings.Join(with, ", ")
+			}
+		}
+		if seat.Round < m.Rounds && !m.Duplicated {
+			switch next := m.Next(seat.Round, seat.Table); len(next) {
+			case 0:
+				c.Next = "→ стойка"
+			case 1:
+				c.Next = fmt.Sprintf("→ маса %d", next[0])
+			default:
+				c.Next = "→ маси " + strings.Trim(strings.Join(strings.Fields(fmt.Sprint(next)), ", "), "[]")
+			}
+		}
+		grid[seat.Round-1][seat.Table-1] = c
 	}
 	done := 0
 	for _, b := range d.Boards {
