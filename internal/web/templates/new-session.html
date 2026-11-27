@@ -1,0 +1,27 @@
+{{define "content"}}
+<h1>Нова сесия <span class="muted small">{{.Data.Pairs}} двойки</span></h1>
+<form method="get" class="inline card">
+  <label>Раздавания от <input type="number" name="min" value="{{.Data.Min}}" min="1" max="127" class="num"></label>
+  <label>до <input type="number" name="max" value="{{.Data.Max}}" min="1" max="127" class="num"></label>
+  <button class="secondary">Покажи</button>
+</form>
+{{with .Data.Options}}
+<p class="muted">Подредени от най-подходящото: Мичъл, когато масите стигат, иначе Хауел.</p>
+<div class="options">
+{{range $i, $o := .}}
+<form method="post" action="/e/{{$.EventID}}/sessions" class="card option{{if eq $i 0}} best{{end}}">
+  <input type="hidden" name="t" value="{{$.Token}}">
+  <input type="hidden" name="kind" value="{{$o.Kind}}">
+  <input type="hidden" name="tables" value="{{$o.Tables}}">
+  <input type="hidden" name="rounds" value="{{$o.Rounds}}">
+  <input type="hidden" name="bpr" value="{{$o.BoardsPerRound}}">
+  <h3>{{$o.Name}}{{if $o.Complete}} <span class="badge">пълен</span>{{end}}{{if eq $i 0}} <span class="badge good">препоръчан</span>{{end}}</h3>
+  <p class="big">{{$o.Boards}} раздавания</p>
+  <p class="muted">{{$o.Tables}} маси · {{$o.Rounds}} рунда × {{$o.BoardsPerRound}}</p>
+  <label>Точкуване <select name="method">{{range $k, $v := $.Data.Methods}}<option value="{{$k}}"{{if eq $k "mp"}} selected{{end}}>{{$v}}</option>{{end}}</select></label>
+  <button>Избери</button>
+</form>
+{{end}}
+</div>
+{{else}}<p class="alert">Няма движение за {{.Data.Pairs}} двойки и {{.Data.Min}}–{{.Data.Max}} раздавания. Разширете обхвата.</p>{{end}}
+{{end}}

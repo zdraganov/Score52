@@ -1,0 +1,37 @@
+{{define "content"}}
+<h1>{{.Event}} <span class="muted small">{{.Data.Date}}</span></h1>
+<div class="grid2">
+<section class="card" id="pairs">
+  <h2>Двойки <span class="badge">{{len .Data.Entries}}</span></h2>
+  {{with .Data.Entries}}
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Играчи</th><th>Ф. номера</th><th></th></tr></thead>
+    <tbody>
+    {{range $i, $e := .}}<tr>
+      <td>{{inc $i}}</td><td>{{names $e}}</td>
+      <td class="muted">{{range $k, $p := $e.Players}}{{if $k}}, {{end}}{{if $p.FederationID}}{{$p.FederationID}}{{else}}–{{end}}{{end}}</td>
+      <td>{{if not (index $.Data.Seated $e.ID)}}<form method="post" action="/e/{{$.EventID}}/pairs/{{$e.ID}}/delete"><input type="hidden" name="t" value="{{$.Token}}"><button class="link danger" title="Изтрий">×</button></form>{{end}}</td>
+    </tr>{{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="muted">Добавете двойките, после изберете движение.</p>{{end}}
+  <form method="post" action="/e/{{.EventID}}/pairs" class="pairform">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <input name="name1" placeholder="Играч 1" required autofocus>
+    <input name="ibn1" placeholder="Ф. номер" class="ibn">
+    <input name="name2" placeholder="Играч 2" required>
+    <input name="ibn2" placeholder="Ф. номер" class="ibn">
+    <button>Добави</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Сесии</h2>
+  {{with .Data.Sessions}}
+  <ul class="list">
+    {{range .}}<li><a href="/e/{{$.EventID}}/s/{{.Slot}}"><b>{{.Name}}</b></a> <span class="muted">{{.Movement.Tables}} маси · {{.Movement.Rounds}} рунда × {{.BoardsPerRound}} раздавания</span></li>{{end}}
+  </ul>
+  {{else}}<p class="muted">Няма сесии.</p>{{end}}
+  {{if ge (len .Data.Entries) 4}}<p><a class="button" href="/e/{{.EventID}}/new-session">+ Нова сесия</a></p>{{else}}<p class="muted">За сесия трябват поне 4 двойки.</p>{{end}}
+</section>
+</div>
+{{end}}

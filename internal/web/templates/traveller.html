@@ -1,0 +1,33 @@
+{{define "content"}}
+{{$s := .Data.S}}
+<h1>Раздаване {{.Data.Board}} <span class="muted small">дава {{.Data.Dealer}} · в зона: {{.Data.Vul}} · {{$s.Name}}</span></h1>
+<p class="actions">
+  {{if .Data.Prev}}<a class="button secondary" href="/e/{{.EventID}}/s/{{$s.Slot}}/b/{{.Data.Prev}}">← {{.Data.Prev}}</a>{{end}}
+  <a class="button secondary" href="/e/{{.EventID}}/s/{{$s.Slot}}">Сесията</a>
+  {{if .Data.Next}}<a class="button secondary" href="/e/{{.EventID}}/s/{{$s.Slot}}/b/{{.Data.Next}}">{{.Data.Next}} →</a>{{end}}
+</p>
+<form method="post" class="card">
+<input type="hidden" name="t" value="{{.Token}}">
+<table class="tbl trav">
+<thead><tr><th>Рунд</th><th>Маса</th><th>СЮ</th><th>ИЗ</th><th>Договор</th><th>Разигр.</th><th>Резултат</th><th>или присъден</th><th>Изиграно</th><th class="num">СЮ точки</th><th class="num">{{if .Data.IMP}}IMP СЮ{{else}}% СЮ{{end}}</th></tr></thead>
+<tbody>
+{{range $i, $r := .Data.Rows}}
+<tr{{if $r.Err}} class="bad"{{end}}>
+  <td>{{$r.Round}}</td><td>{{$r.Table}}</td>
+  <td title="{{$r.NSNames}}"><b>{{$r.NS}}</b></td><td title="{{$r.EWNames}}"><b>{{$r.EW}}</b></td>
+  <td><input name="c{{$i}}" value="{{$r.Contract}}" placeholder="4S" class="contract" autocomplete="off"{{if eq $i 0}} autofocus{{end}}></td>
+  <td><select name="d{{$i}}"><option></option>{{range $d := "N E S W" | fields}}<option{{if eq $d $r.Declarer}} selected{{end}}>{{$d}}</option>{{end}}</select></td>
+  <td><input name="r{{$i}}" value="{{$r.Result}}" placeholder="=" class="res" autocomplete="off"></td>
+  <td><select name="a{{$i}}"><option value=""></option>{{range $.Data.Adjusted}}<option{{if eq . $r.Adjusted}} selected{{end}}>{{.}}</option>{{end}}</select></td>
+  <td class="ct">{{if $r.Score}}{{suits $r.Contract}} {{$r.Declarer}} {{$r.Result}}{{else if $r.Adjusted}}присъден {{$r.Adjusted}}{{end}}</td>
+  <td class="num">{{with $r.Score}}{{signed .}}{{end}}</td>
+  <td class="num">{{with $r.NSPoints}}{{num .}}{{end}}</td>
+</tr>
+{{if $r.Err}}<tr class="bad"><td colspan="11">⚠ {{$r.Err}}</td></tr>{{end}}
+{{end}}
+</tbody>
+</table>
+<p class="muted small">Договор: 4S, 3NTX, 6HXX, PASS (S ♠ H ♥ D ♦ C ♣ NT). Резултат: =, +1, -2. Празен ред трие резултата.</p>
+<p class="actions"><button name="go" value="next">Запиши и следващото</button> <button name="go" value="stay" class="secondary">Запиши</button></p>
+</form>
+{{end}}

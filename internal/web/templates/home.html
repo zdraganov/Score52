@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Състезания</h1>
+<div class="grid2">
+<section class="card">
+  <h2>Ново състезание</h2>
+  <form method="post" action="/events" class="stack">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Име <input name="title" required placeholder="Турнир по двойки – клуб „Пика“" autofocus></label>
+    <label>Дата <input type="date" name="date" value="{{.Data.Today}}" required></label>
+    <button>Създай</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Досегашни</h2>
+  {{with .Data.Events}}
+  <ul class="list">
+    {{range .}}<li><a href="/e/{{.ID}}"><b>{{.Title}}</b></a> <span class="muted">{{.Date}} · {{.Entries}} двойки</span></li>{{end}}
+  </ul>
+  {{else}}<p class="muted">Още няма. Всяко състезание е отделен файл в<br><code>{{.Data.Dir}}</code></p>{{end}}
+</section>
+</div>
+{{end}}
