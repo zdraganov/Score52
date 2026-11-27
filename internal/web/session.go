@@ -1,14 +1,12 @@
 package web
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/zdraganov/Score52/internal/movement"
 	"github.com/zdraganov/Score52/internal/pairs"
@@ -576,53 +574,6 @@ func (s *Server) results(w http.ResponseWriter, r *http.Request) {
 	p.Title = "Класиране – " + d.Name
 	p.Data = map[string]any{"S": d, "Fields": fields, "FieldNames": names, "MP": d.Scoring == string(pairs.MethodMP), "Missing": missing}
 	s.render(w, "results", p)
-}
-
-// --- USEBIO ---
-
-func (s *Server) usebio(w http.ResponseWriter, r *http.Request) {
-	st, p, d, ok := s.loadSession(w, r)
-	if !ok {
-		return
-	}
-	fields, _, err := standings(d)
-	if err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	res, _ := scoreSession(d)
-	entries, _ := st.Entries()
-	byID := map[int64]store.Entry{}
-	for _, e := range entries {
-		byID[e.ID] = e
-	}
-	method := map[string]usebio.Method{string(pairs.MethodMP): usebio.MatchPoints, string(pairs.MethodCrossIMP): usebio.CrossIMPs, string(pairs.MethodButler): usebio.Butler}[d.Scoring]
-	date, _ := time.Parse("2006-01-02", must(st.Meta(store.MetaDate)))
-	ev := usebio.PairsEvent{Title: p.Event + " – " + d.Name, Date: date, Method: method}
-	for fi, f := range fields {
-		for _, sd := range f {
-			pr := usebio.Pair{Number: sd.Pair, Place: sd.Place, Tied: sd.Tied, Score: sd.Score, Percent: sd.Percent, Boards: sd.Boards}
-			if len(fields) == 2 {
-				pr.Direction = [...]string{"NS", "EW"}[fi]
-			}
-			for _, pl := range byID[d.Seating[sd.Pair-1]].Players {
-				pr.Players = append(pr.Players, usebio.Player{Name: pl.Name, FederationID: pl.FederationID})
-			}
-			ev.Pairs = append(ev.Pairs, pr)
-		}
-	}
-	ev.Boards = sessionBoards(d, res)
-	var buf bytes.Buffer
-	if err := usebio.WritePairs(&buf, ev); err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	// bridge.bg slots: a qualifying session is .s1, .s2...; a final's file (.f1 for A) is the stage's,
-	// with the carry-over in it, so a final session's own file is only for the director's records
-	name := "." + d.Slot
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s%s.xml"`, fileBase(st, p.EventID), name))
-	w.Write(buf.Bytes())
 }
 
 // sessionBoards are a session's travellers for USEBIO, with each line's points.

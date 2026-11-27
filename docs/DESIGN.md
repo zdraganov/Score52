@@ -87,7 +87,16 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   2-session qualifier into a 2-session final, where the qualifying average counts 25%:
   final total = 0.25 × qualifying % + 0.75 × final %. The percentage is set per final. A tie on a cut is
   stopped for the director.
-- **bridge.bg slots**: session k → `<id>.s<k>.pbn`, final A/B → `<id>.f1/.f2.pbn`, the event → `<id>.pbn`.
+- **bridge.bg slots** (USEBIO), as the site reads them (bridge.bg#242 for the final sessions):
+  - `<id>.s<k>.xml`: qualifying session k. The standings are **cumulative** after session k (the site takes
+    the latest session for the overall order and for ELO, as with Magic Contest's files), with the
+    session's own result beside them (`SESSION_PERCENTAGE`, `SESSION_BOARDS`), and the session's boards.
+  - `<id>.f<n>.xml`: final A, B… The final's standings with the carry-over split into its parts
+    (`CARRY_OVER` + `SESSION_SCORE` = the total), and the boards when it was one session.
+  - `<id>.f<n>s<k>.xml`: session k of a final played in several (`tournaments.final_sessions` on the
+    site, e.g. `2,1`). The final so far with the carry-over, the session's own result, and its boards.
+  - One qualifying session and no finals: the tournament's own `<id>.xml`.
+  - ELO comes from the finals' own files plus the latest qualifying session, never from `f<n>s<k>`.
 
 ## Teams
 

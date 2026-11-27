@@ -1,19 +1,16 @@
 package web
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/zdraganov/Score52/internal/movement"
 	"github.com/zdraganov/Score52/internal/pairs"
 	"github.com/zdraganov/Score52/internal/store"
-	"github.com/zdraganov/Score52/internal/usebio"
 )
 
 // A pairs event is a qualifying (sessions s1, s2...) and optionally finals A, B... (sessions fA1, fA2...),
@@ -79,6 +76,8 @@ type stageRow struct {
 	Names      string
 	Boards     int
 	PerSession []*float64 // % (MP) or IMPs, nil where the pair didn't play
+	// SessionBoards are the boards it played in each session
+	SessionBoards []int
 }
 
 // stageStandings adds up a stage's sessions by entry. carry is each entry's qualifying total for a final.
@@ -94,6 +93,7 @@ func stageStandings(st *store.Store, sessions []store.Session, stage string, car
 	}
 	per := map[int64][]*float64{}
 	boards := map[int64]int{}
+	sb := map[int64][]int{}
 	var scores [][]pairs.SessionScore
 	for i, x := range sr.Sessions {
 		sr.MP = x.Scoring == string(pairs.MethodMP)
@@ -113,6 +113,10 @@ func stageStandings(st *store.Store, sessions []store.Session, stage string, car
 			}
 			ss = append(ss, pairs.SessionScore{Pair: int(e), Score: t.Score, Top: t.Top, Boards: t.Boards})
 			boards[e] += t.Boards
+			if sb[e] == nil {
+				sb[e] = make([]int, len(sr.Sessions))
+			}
+			sb[e][i] = t.Boards
 			v := t.Score
 			if sr.MP && t.Top > 0 {
 				v = 100 * t.Score / t.Top
@@ -133,7 +137,8 @@ func stageStandings(st *store.Store, sessions []store.Session, stage string, car
 	for _, t := range totals {
 		e := int64(t.Pair)
 		seen[e] = true
-		sr.Rows = append(sr.Rows, stageRow{Total: t, Entry: e, Names: names(byID[e]), Boards: boards[e], PerSession: pad(per[e], len(sr.Sessions))})
+		sr.Rows = append(sr.Rows, stageRow{Total: t, Entry: e, Names: names(byID[e]), Boards: boards[e], PerSession: pad(per[e], len(sr.Sessions)),
+			SessionBoards: sb[e]})
 	}
 	// pairs of the stage that haven't scored yet (a final before its first result)
 	for _, e := range entries {
@@ -366,112 +371,4 @@ func seatSession(m movement.Movement, order []int64, earlier []store.Session, se
 		out[i] = int64(e)
 	}
 	return out
-}
-
-// --- USEBIO for a whole stage ---
-
-// fileBase is the name bridge.bg knows the event by: its tournament number when set, else the file's.
-func fileBase(st *store.Store, id string) string {
-	if v, _ := st.Meta(store.MetaBridgeBG); v != "" {
-		return v
-	}
-	return id
-}
-
-// stageFile is the stage's file name on bridge.bg: final A -> .f1, B -> .f2; the qualifying's overall
-// ranking is the tournament's own file when there are no finals.
-func stageFile(stage string, finals int) string {
-	if stage != "" {
-		return fmt.Sprintf(".f%d", int(stage[0]-'A')+1)
-	}
-	if finals > 0 {
-		return ".kvalifikacia"
-	}
-	return ""
-}
-
-func (s *Server) stageUsebio(w http.ResponseWriter, r *http.Request) {
-	st, p, ok := s.eventPage(w, r)
-	if !ok {
-		return
-	}
-	stage := r.PathValue("stage")
-	if stage == "q" {
-		stage = ""
-	}
-	sessions, _ := st.Sessions()
-	pl, err := loadPlan(st)
-	if err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	var sr stageResult
-	if stage == "" {
-		sr, _, err = qualifying(st, sessions)
-	} else {
-		f, ok := pl.final(stage)
-		if !ok {
-			s.fail(w, http.StatusNotFound, fmt.Errorf("няма финал %s", stage))
-			return
-		}
-		var carry map[int]float64
-		if _, carry, err = qualifying(st, sessions); err == nil {
-			sr, err = stageStandings(st, sessions, stage, carry, f.Carry, f.Entries)
-		}
-	}
-	if err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	if len(sr.Sessions) == 0 {
-		s.fail(w, http.StatusBadRequest, errors.New("етапът още няма сесии"))
-		return
-	}
-	entries, _ := st.Entries()
-	byID := map[int64]store.Entry{}
-	number := map[int64]int{} // a pair's number over the stage: its place in the list of entries
-	for i, e := range entries {
-		byID[e.ID] = e
-		number[e.ID] = i + 1
-	}
-	// one session: the pairs keep that session's numbers and its boards go along; over several, the
-	// boards are in each session's own file and a pair's number is its place in the list of entries
-	var one *sessionData
-	var oneRes pairs.SessionResult
-	if len(sr.Sessions) == 1 {
-		if one, err = sessionDataOf(st, sr.Sessions[0]); err == nil {
-			oneRes, err = scoreSession(one)
-		}
-		if err != nil {
-			s.fail(w, http.StatusInternalServerError, err)
-			return
-		}
-		for i, e := range one.Seating {
-			if e != 0 {
-				number[e] = i + 1
-			}
-		}
-	}
-	method := map[bool]usebio.Method{true: usebio.MatchPoints, false: usebio.CrossIMPs}[sr.MP]
-	date, _ := time.Parse("2006-01-02", must(st.Meta(store.MetaDate)))
-	ev := usebio.PairsEvent{Title: p.Event + " – " + stageName(stage), Date: date, Method: method}
-	for i, row := range sr.Rows {
-		pr := usebio.Pair{Number: number[row.Entry], Place: row.Rank, Tied: i > 0 && row.Rank == sr.Rows[i-1].Rank ||
-			i+1 < len(sr.Rows) && row.Rank == sr.Rows[i+1].Rank, Score: row.Total.Total, Percent: row.Total.Total, Boards: row.Boards}
-		for _, pl := range byID[row.Entry].Players {
-			pr.Players = append(pr.Players, usebio.Player{Name: pl.Name, FederationID: pl.FederationID})
-		}
-		ev.Pairs = append(ev.Pairs, pr)
-	}
-	if one != nil {
-		ev.Boards = sessionBoards(one, oneRes)
-	}
-	var buf bytes.Buffer
-	if err := usebio.WritePairs(&buf, ev); err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s%s.xml"`, fileBase(st, p.EventID), stageFile(stage, len(pl.Finals))))
-	w.Write(buf.Bytes())
 }

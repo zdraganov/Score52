@@ -46,9 +46,26 @@ type Pair struct {
 	Players   []Player
 	Place     int
 	Tied      bool    // the place is shared ("3=")
-	Score     float64 // matchpoints or IMPs
+	Score     float64 // matchpoints or IMPs (the stage's total so far)
 	Percent   float64 // MP only
 	Boards    int
+	// Session: the file is one session of a longer stage; its own result, beside the totals above
+	Session *SessionResult
+	// Carry: a final's total split into the part brought from the qualifying and the final's own
+	Carry *CarryParts
+}
+
+// SessionResult is a pair's result in the file's session alone (SESSION_PERCENTAGE, SESSION_BOARDS:
+// bridge.bg's extension, as Magic Contest's .pbn has them).
+type SessionResult struct {
+	Percent float64 // or IMPs
+	Boards  int
+}
+
+// CarryParts split a final's total: Carried + Own = the total (CARRY_OVER, SESSION_SCORE).
+type CarryParts struct {
+	Carried float64
+	Own     float64
 }
 
 type Board struct {
@@ -138,6 +155,11 @@ type xPair struct {
 	Total     string    `xml:"TOTAL_SCORE"`
 	Percent   string    `xml:"PERCENTAGE,omitempty"`
 	Boards    int       `xml:"BOARDS_PLAYED"`
+	// bridge.bg's extensions (UsebioParser): a session's own result, a final's carry-over
+	SessionPct    string `xml:"SESSION_PERCENTAGE,omitempty"`
+	SessionBoards int    `xml:"SESSION_BOARDS,omitempty"`
+	SessionScore  string `xml:"SESSION_SCORE,omitempty"`
+	CarryOver     string `xml:"CARRY_OVER,omitempty"`
 }
 
 type xTeam struct {
@@ -227,6 +249,12 @@ func WritePairs(w io.Writer, e PairsEvent) error {
 			Total: num(p.Score), Boards: p.Boards}
 		if e.Method == MatchPoints {
 			xp.Percent = num(p.Percent)
+		}
+		if p.Session != nil {
+			xp.SessionPct, xp.SessionBoards = num(p.Session.Percent), p.Session.Boards
+		}
+		if p.Carry != nil {
+			xp.CarryOver, xp.SessionScore = num(p.Carry.Carried), num(p.Carry.Own)
 		}
 		x.Event.Participants.Pairs = append(x.Event.Participants.Pairs, xp)
 	}
