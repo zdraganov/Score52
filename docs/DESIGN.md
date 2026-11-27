@@ -86,6 +86,14 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   yet (a search shows such movements exist for 14–24 tables within boards 1–32).
   The session's movement is the sections combined (`movement.Combine`): tables and pairs numbered on, shown
   as "B7", boards moving within their section; `Movement.Section(i)` gives a section back for Bridgemate.
+- **By the number of sessions** (the BBF TD's practice): one session plays Mitchell sections when they
+  fit, else a **reduced Howell** (one field; on boards up to 32 a 20-table Howell has 16 sets, so 4 tables
+  a round share a set, found by local search so no pair plays a set twice); 2–3 sessions play **one big
+  Mitchell section and a smaller Howell section** (40 pairs: Mitchell 13 tables + a complete Howell of 14
+  pairs), so the next session can reseat pairs against new opponents. The deal advice speaks in whole
+  boxes 1–32 and the most tables sharing a set in a round.
+- **Relay-and-stand Mitchell** (even tables, all rounds): the first and the last table share a set, the
+  stand is between tables T/2 and T/2+1, boards move down a table through it.
 - **Howell** for 8+ pairs comes from a cyclic Room square, so it needs one set of boards and every table
   moves its boards on by one each round. 4 and 6 pairs have no such square; they get a round robin
   with duplicated boards (a dealing machine), as does any size on request. Odd counts get a phantom.

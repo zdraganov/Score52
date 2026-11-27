@@ -3,6 +3,7 @@ package movement
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // A Layout is one way to seat a whole field in one session: the tables split into sections of as equal a
@@ -20,9 +21,10 @@ type Layout struct {
 	Copies         int // one per section
 	Played         int // times each board is played across the field: its comparisons
 	Complete       bool
-	// Duplicates: sets to copy once more for relay-and-stand sections (tables 1 and 2 share one)
+	// Duplicates: sets to copy once more for relay-and-stand sections (the first and last table share one)
 	Duplicates int
-	SitOuts    int // sections with a pair sitting out each round
+	SitOuts    int    // sections with a pair sitting out each round
+	Type       string // TypeSections, TypeHowell, TypeMixed
 }
 
 // Section is one section of a layout.
@@ -57,43 +59,87 @@ const (
 	MaxBoard         = 32
 )
 
-// Layouts lists the ways to seat `pairs` pairs for about `boards` boards (within ±tol), best first: the
-// number of boards closest to the target; then each board played the most times across the field (its
-// comparisons: sections × rounds); then the fewest sections; then fewer moves. maxDeal > 0 keeps to
-// layouts whose boards per copy fit what was dealt, and maxCopies > 0 to that many copies.
-func Layouts(pairs, boards, tol, maxDeal, maxCopies int) []Layout {
+// Layout types: Mitchell sections, one Howell, or a Mitchell section and a Howell section.
+const (
+	TypeSections = "sections"
+	TypeHowell   = "howell"
+	TypeMixed    = "mixed"
+)
+
+// Layouts lists the ways to seat `pairs` pairs for `boards` boards (±tol) in an event of `sessions`
+// sessions, best first. The federation's TD's preference decides the kind: a single session plays
+// Mitchell sections when they fit, else one reduced Howell (one field); an event of 2-3 sessions plays one
+// big Mitchell section and a smaller Howell section, so the next session can seat pairs against new
+// opponents. Within a kind: boards closest to the target, each board played the most times across the
+// field, fewer sit-outs, fewer duplicated sets, fewer sections, fewer moves. maxDeal > 0 keeps to boards
+// per copy within what was dealt, and maxCopies > 0 to that many copies.
+func Layouts(pairs, boards, tol, maxDeal, maxCopies, sessions int) []Layout {
 	need := (pairs + 1) / 2
 	var out []Layout
-	for k := 1; k <= need/MinSectionTables+1 && k <= 26; k++ {
-		if maxCopies > 0 && k > maxCopies {
-			break
+	keep := func(l Layout, ok bool) {
+		if ok && l.BoardsPerCopy <= MaxBoard && (maxDeal == 0 || l.BoardsPerCopy <= maxDeal) && (maxCopies == 0 || l.Copies <= maxCopies) {
+			out = append(out, l)
 		}
-		// up to one pair sitting out in each section: the tables may run to (pairs + k) / 2
-		for tables := need; 2*tables-pairs <= k; tables++ {
-			sizes := split(tables, k)
-			if sizes[k-1] < MinSectionTables && k > 1 || sizes[0] > MaxSectionTables {
-				continue
+	}
+	for bpr := 2; bpr <= 5; bpr++ {
+		for r := (boards - tol + bpr - 1) / bpr; r*bpr <= boards+tol; r++ {
+			// Mitchell sections, up to one pair sitting out in each
+			for k := 1; k <= need/MinSectionTables+1 && k <= 26; k++ {
+				for tables := need; 2*tables-pairs <= k; tables++ {
+					sizes := split(tables, k)
+					if sizes[k-1] < MinSectionTables && k > 1 || sizes[0] > MaxSectionTables {
+						continue
+					}
+					var secs []Section
+					left := 2*tables - pairs
+					for _, t := range sizes {
+						p := 2 * t
+						if left > 0 {
+							p, left = p-1, left-1
+						}
+						secs = append(secs, Section{Tables: t, Pairs: p, Kind: Mitchell})
+					}
+					keep(assemble(secs, r, bpr))
+				}
 			}
-			for bpr := 2; bpr <= 5; bpr++ {
-				for r := (boards - tol + bpr - 1) / bpr; r*bpr <= boards+tol; r++ {
-					l, ok := layout(pairs, sizes, r, bpr)
-					if ok && l.BoardsPerCopy <= MaxBoard && (maxDeal == 0 || l.BoardsPerCopy <= maxDeal) {
-						out = append(out, l)
+			// one Howell for the whole field
+			keep(assemble([]Section{{Tables: need, Pairs: pairs, Kind: Howell}}, r, bpr))
+			// a Mitchell section and a Howell section for the rest
+			for t := max(r, 3); t <= MaxSectionTables; t++ {
+				for _, mp := range []int{2 * t, 2*t - 1} {
+					if rest := pairs - mp; rest >= 4 && rest < mp { // the Mitchell is the bigger one
+						keep(assemble([]Section{{Tables: t, Pairs: mp, Kind: Mitchell}, {Tables: (rest + 1) / 2, Pairs: rest, Kind: Howell}}, r, bpr))
 					}
 				}
 			}
 		}
+	}
+	rank := func(l Layout) int { // the TD's order of the kinds
+		order := map[string]int{TypeSections: 0, TypeHowell: 1, TypeMixed: 2}
+		if sessions >= 2 {
+			order = map[string]int{TypeMixed: 0, TypeSections: 1, TypeHowell: 2}
+		}
+		return order[l.Type]
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i], out[j]
 		if da, db := abs(a.Boards-boards), abs(b.Boards-boards); da != db {
 			return da < db
 		}
-		if a.Played != b.Played {
-			return a.Played > b.Played
+		if ra, rb := rank(a), rank(b); ra != rb {
+			return ra < rb
 		}
 		if a.SitOuts != b.SitOuts {
 			return a.SitOuts < b.SitOuts
+		}
+		if a.Duplicates != b.Duplicates {
+			return a.Duplicates < b.Duplicates
+		}
+		if a.Type == TypeMixed && b.Type == TypeMixed && a.Sections[0].Pairs != b.Sections[0].Pairs {
+			return a.Sections[0].Pairs > b.Sections[0].Pairs // the TD's: a big Mitchell, a small Howell
+		}
+		if a.Played != b.Played {
+			return a.Played > b.Played
 		}
 		if a.Duplicates != b.Duplicates {
 			return a.Duplicates < b.Duplicates
@@ -121,37 +167,108 @@ func split(n, k int) []int {
 	return out
 }
 
-func layout(pairs int, sizes []int, rounds, bpr int) (Layout, bool) {
-	l := Layout{Rounds: rounds, BoardsPerRound: bpr, Boards: rounds * bpr, Copies: len(sizes), Complete: true}
-	out := 2*sum(sizes) - pairs // sit-outs: the first sections get one each
-	if out < 0 || out > len(sizes) {
-		return l, false
+// assemble makes a layout of sections (Kind Mitchell for any Mitchell, Howell) for rounds × bpr boards:
+// a Mitchell's variant (plain, skip, relay and stand) from its tables and rounds, a Howell's sets from
+// the boards (up to MaxBoard; sharing where it has more tables than sets), the boards to deal, the
+// duplicated sets, the sit-outs, and how many times a board is played across the field.
+func assemble(secs []Section, rounds, bpr int) (Layout, bool) {
+	l := Layout{Rounds: rounds, BoardsPerRound: bpr, Boards: rounds * bpr, Copies: len(secs), Complete: true, Type: TypeSections}
+	maxSets := MaxBoard / bpr
+	hasH, hasM := false, false
+	for i, x := range secs {
+		x.Letter = string(rune('A' + i))
+		sets := x.Tables
+		if x.Kind == Howell {
+			hasH = true
+			n := x.Pairs + x.Pairs%2
+			if x.Pairs < 4 || rounds > n-1 {
+				return l, false
+			}
+			x.Tables = n / 2
+			sets = max(min(maxSets, x.Tables), rounds)
+			l.Duplicates += max(0, x.Tables-sets)
+			l.Complete = l.Complete && rounds == n-1
+			l.Played += rounds * x.Tables / sets
+			if x.Pairs%2 == 1 {
+				l.SitOuts++
+			}
+		} else {
+			hasM = true
+			if x.Pairs != 2*x.Tables && x.Pairs != 2*x.Tables-1 {
+				return l, false
+			}
+			// odd tables: a Mitchell, every round; even: skip Mitchell up to T-1 rounds, relay and stand for all T
+			max := x.Tables
+			switch {
+			case x.Tables%2 == 1:
+				x.Kind = Mitchell
+			case rounds <= x.Tables-1:
+				x.Kind, max = SkipMitchell, x.Tables-1
+			default:
+				x.Kind = RelayMitchell
+				l.Duplicates++
+			}
+			if x.Tables < 3 || rounds > max {
+				return l, false
+			}
+			l.Complete = l.Complete && rounds == max
+			l.Played += rounds
+			if x.Pairs < 2*x.Tables {
+				l.SitOuts++
+			}
+		}
+		l.BoardsPerCopy = max2(l.BoardsPerCopy, sets*bpr)
+		l.Sections = append(l.Sections, x)
 	}
-	for i, t := range sizes {
-		// odd tables: a Mitchell, every round; even: skip Mitchell up to T-1 rounds, relay and stand for all T
-		kind, max := Mitchell, t
-		switch {
-		case t%2 == 1:
-		case rounds <= t-1:
-			kind, max = SkipMitchell, t-1
-		default:
-			kind = RelayMitchell
-			l.Duplicates++
-		}
-		if t < 3 || rounds > max {
-			return l, false
-		}
-		l.Complete = l.Complete && rounds == max
-		p := 2 * t
-		if i < out {
-			p--
-			l.SitOuts++
-		}
-		l.Sections = append(l.Sections, Section{Letter: string(rune('A' + i)), Tables: t, Pairs: p, Kind: kind})
-		l.BoardsPerCopy = max2(l.BoardsPerCopy, t*bpr)
+	switch {
+	case hasH && hasM:
+		l.Type = TypeMixed
+	case hasH:
+		l.Type = TypeHowell
 	}
-	l.Played = len(sizes) * rounds
 	return l, true
+}
+
+// Spec is a layout's sections as text, to rebuild it from a form: "M13/26,H7/14" (kind, tables, pairs).
+func (l Layout) Spec() string {
+	var out []string
+	for _, x := range l.Sections {
+		k := "M"
+		if x.Kind == Howell {
+			k = "H"
+		}
+		out = append(out, fmt.Sprintf("%s%d/%d", k, x.Tables, x.Pairs))
+	}
+	return strings.Join(out, ",")
+}
+
+// LayoutOf rebuilds the layout of a Spec for a session of rounds × bpr boards.
+func LayoutOf(spec string, rounds, bpr int) (Layout, error) {
+	var secs []Section
+	for _, f := range strings.Split(spec, ",") {
+		var k string
+		var t, p int
+		if len(f) < 4 {
+			return Layout{}, fmt.Errorf("bad section %q", f)
+		}
+		k, f = f[:1], f[1:]
+		if _, err := fmt.Sscanf(f, "%d/%d", &t, &p); err != nil || (k != "M" && k != "H") {
+			return Layout{}, fmt.Errorf("bad section %q", k+f)
+		}
+		kind := Mitchell
+		if k == "H" {
+			kind = Howell
+		}
+		secs = append(secs, Section{Tables: t, Pairs: p, Kind: kind})
+	}
+	if len(secs) == 0 || len(secs) > 26 {
+		return Layout{}, fmt.Errorf("1-26 sections")
+	}
+	l, ok := assemble(secs, rounds, bpr)
+	if !ok {
+		return Layout{}, fmt.Errorf("the sections %s don't play %d rounds", spec, rounds)
+	}
+	return l, nil
 }
 
 func sum(v []int) int {
@@ -176,73 +293,72 @@ func max2(a, b int) int {
 	return b
 }
 
-// DealAdvice is a deal to make before the pairs are known: Copies copies of boards 1..BoardsPerCopy,
-// and the layout each number of pairs would play with it.
+// DealAdvice is what to deal before the pairs are known: Copies boxes of boards 1..MaxBoard (the
+// federation deals whole boxes), and Duplicates: the most tables that share a set in a round. ByPairs is
+// the layout each number of pairs would play; a missing number isn't covered.
 type DealAdvice struct {
 	Copies        int
-	BoardsPerCopy int
-	ByPairs       map[int]Layout // missing: can't seat that many within the boards asked for
+	BoardsPerCopy int // MaxBoard: a whole box
+	Duplicates    int // the most tables sharing a set in a round, for any number of pairs covered
+	BoardsPerSet  int // to count the duplicates in boards
+	ByPairs       map[int]Layout
 	// Down is the fewest pairs it covers from the top of the range without a gap
 	Down int
 }
 
-// Total is the boards to deal.
+// Total is the boards in the boxes.
 func (d DealAdvice) Total() int { return d.Copies * d.BoardsPerCopy }
 
-// Advise lists the deals worth making for from..to pairs and about `boards` boards (±tol): the smallest
-// that seats the expected maximum, then each larger one that covers more of the range from the top
-// down, up to the one covering all of it. The TD weighs boards to deal against the risk of fewer pairs.
-func Advise(from, to, boards, tol int) []DealAdvice {
-	type deal struct{ c, n int }
-	cands := map[deal]bool{}
-	for p := from; p <= to; p++ {
-		for _, l := range Layouts(p, boards, tol, 0, 0) {
-			cands[deal{l.Copies, l.BoardsPerCopy}] = true
-		}
-	}
-	var all []DealAdvice
-	for d := range cands {
-		a := DealAdvice{Copies: d.c, BoardsPerCopy: d.n, ByPairs: map[int]Layout{}, Down: to + 1}
-		gap := false
-		for p := to; p >= from; p-- {
-			if ls := Layouts(p, boards, tol, d.n, d.c); len(ls) > 0 {
-				a.ByPairs[p] = ls[0]
-				if !gap {
-					a.Down = p
-				}
-			} else {
-				gap = true
-			}
-		}
-		if a.Down <= to {
-			all = append(all, a)
-		}
-	}
-	sort.Slice(all, func(i, j int) bool {
-		if all[i].Total() != all[j].Total() {
-			return all[i].Total() < all[j].Total()
-		}
-		if all[i].Down != all[j].Down {
-			return all[i].Down < all[j].Down
-		}
-		return all[i].Copies < all[j].Copies
-	})
-	// keep each deal that reaches further down than every smaller one
+// Advise lists the deals worth making for from..to pairs and `boards` boards (±tol) in an event of
+// `sessions` sessions. For every number of pairs it takes the layout the TD would pick (Layouts' first)
+// and what that needs: boxes of 1..MaxBoard and tables sharing a set. The first deal is what the expected
+// maximum needs, each next one what it takes to go further down the range, up to all of it.
+func Advise(from, to, boards, tol, sessions int) []DealAdvice {
 	var out []DealAdvice
-	for _, a := range all {
-		if len(out) == 0 || a.Down < out[len(out)-1].Down {
-			out = append(out, a)
+	cur := DealAdvice{BoardsPerCopy: MaxBoard, ByPairs: map[int]Layout{}, Down: to + 1}
+	for p := to; p >= from; p-- {
+		ls := Layouts(p, boards, tol, 0, 0, sessions)
+		if len(ls) == 0 {
+			break // a gap: nothing below it is covered without one
 		}
+		l := ls[0]
+		if l.Copies > cur.Copies || l.Duplicates > cur.Duplicates {
+			if cur.Copies > 0 {
+				out = append(out, cur)
+			}
+			next := DealAdvice{Copies: max(cur.Copies, l.Copies), BoardsPerCopy: MaxBoard,
+				Duplicates: max(cur.Duplicates, l.Duplicates), BoardsPerSet: l.BoardsPerRound, ByPairs: map[int]Layout{}}
+			for q, x := range cur.ByPairs {
+				next.ByPairs[q] = x
+			}
+			cur = next
+		}
+		cur.ByPairs[p] = l
+		cur.Down = p
+		if cur.BoardsPerSet == 0 {
+			cur.BoardsPerSet = l.BoardsPerRound
+		}
+	}
+	if cur.Copies > 0 {
+		out = append(out, cur)
 	}
 	return out
 }
 
-// Build makes the layout's combined movement: a Mitchell per section (skip Mitchell on an even number of
 // tables), the odd pair out sitting out in section A.
 func (l Layout) Build() (Movement, error) {
 	var ms []Movement
 	var letters []string
 	for _, x := range l.Sections {
+		if x.Kind == Howell {
+			m, err := NewReducedHowell(x.Pairs, l.Rounds, MaxBoard/l.BoardsPerRound)
+			if err != nil {
+				return Movement{}, fmt.Errorf("section %s: %w", x.Letter, err)
+			}
+			ms = append(ms, m)
+			letters = append(letters, x.Letter)
+			continue
+		}
 		m, err := NewMitchell(x.Tables, l.Rounds, MitchellOptions{Relay: x.Kind == RelayMitchell})
 		if err != nil {
 			return Movement{}, fmt.Errorf("section %s: %w", x.Letter, err)
@@ -259,17 +375,4 @@ func (l Layout) Build() (Movement, error) {
 		return ms[0], ms[0].Validate()
 	}
 	return Combine(letters, ms...)
-}
-
-// LayoutOf is the layout of `pairs` pairs in sections of these sizes (tables), for a session of
-// rounds × bpr boards: what a director picked from Layouts, rebuilt from its numbers.
-func LayoutOf(pairs int, sizes []int, rounds, bpr int) (Layout, error) {
-	if len(sizes) == 0 || len(sizes) > 26 {
-		return Layout{}, fmt.Errorf("1-26 sections")
-	}
-	l, ok := layout(pairs, sizes, rounds, bpr)
-	if !ok {
-		return Layout{}, fmt.Errorf("%d pairs don't fit sections of %v tables for %d rounds", pairs, sizes, rounds)
-	}
-	return l, nil
 }

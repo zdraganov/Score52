@@ -13,12 +13,13 @@ import (
 // dealPlan is what the director plans before the pairs are known: how many are expected, how many boards
 // a pair should play, and what was dealt for that (copies of boards 1..PerCopy).
 type dealPlan struct {
-	From    int `json:"from"`
-	To      int `json:"to"`
-	Boards  int `json:"boards"`
-	Tol     int `json:"tol"`
-	Copies  int `json:"copies,omitempty"`
-	PerCopy int `json:"per_copy,omitempty"`
+	From     int `json:"from"`
+	To       int `json:"to"`
+	Boards   int `json:"boards"`
+	Tol      int `json:"tol"`
+	Copies   int `json:"copies,omitempty"`   // boxes of boards 1-32
+	PerCopy  int `json:"per_copy,omitempty"` // 32
+	Sessions int `json:"sessions,omitempty"` // of the event: decides Mitchell sections, a Howell, or both
 }
 
 func loadDeal(st *store.Store) dealPlan {
@@ -49,18 +50,19 @@ func (s *Server) dealPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d := loadDeal(st)
 	q := r.URL.Query()
-	for k, v := range map[string]*int{"from": &d.From, "to": &d.To, "boards": &d.Boards, "tol": &d.Tol} {
+	for k, v := range map[string]*int{"from": &d.From, "to": &d.To, "boards": &d.Boards, "sessions": &d.Sessions} {
 		if n, err := strconv.Atoi(q.Get(k)); err == nil {
 			*v = n
 		}
 	}
+	d.Sessions = max(d.Sessions, 1)
 	if d.Boards == 0 {
 		d.Boards = 26
 	}
 	d.Tol = 0 // a pair plays exactly the boards set
 	var opts []dealOption
 	if d.To >= 4 && d.From >= 4 && d.From <= d.To && d.To-d.From <= 80 && d.Boards > 0 {
-		for _, a := range movement.Advise(d.From, d.To, d.Boards, d.Tol) {
+		for _, a := range movement.Advise(d.From, d.To, d.Boards, d.Tol, d.Sessions) {
 			o := dealOption{DealAdvice: a}
 			for n := d.To; n >= d.From; n-- {
 				row := dealRow{Pairs: n}
@@ -85,7 +87,7 @@ func (s *Server) saveDeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var d dealPlan
-	for k, v := range map[string]*int{"from": &d.From, "to": &d.To, "boards": &d.Boards, "tol": &d.Tol, "copies": &d.Copies, "per_copy": &d.PerCopy} {
+	for k, v := range map[string]*int{"from": &d.From, "to": &d.To, "boards": &d.Boards, "sessions": &d.Sessions, "copies": &d.Copies, "per_copy": &d.PerCopy} {
 		*v, _ = strconv.Atoi(r.PostFormValue(k))
 	}
 	if d.Copies < 1 || d.PerCopy < 1 {
