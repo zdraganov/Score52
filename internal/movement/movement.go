@@ -25,6 +25,10 @@ const (
 	// HowellDuplicated is a round robin where every table plays the same board set in a round:
 	// it needs as many copies of the boards as tables (a dealing machine), and exists for any size.
 	HowellDuplicated Kind = "howell-duplicated"
+	// HowellShared is a small Howell (4-7 pairs) for one set of boards: tables share a set in a round,
+	// passing its boards between them. A Howell of 4 or 6 pairs can't give every table its own set (there
+	// is no Room square of side 3 or 5); for 6 pairs at least one round has all three tables on one set.
+	HowellShared Kind = "howell-shared"
 )
 
 // Movement is a complete seating plan.
@@ -37,8 +41,10 @@ type Movement struct {
 	// TwoFields: a Mitchell's NS pairs (1..Tables) and EW pairs (Tables+1..2*Tables) are ranked
 	// separately unless arrow switches or a one-field factoring make it one.
 	TwoFields bool
-	// Duplicated: several tables may play the same set in the same round.
+	// Duplicated: several tables may play the same set in the same round (copies of the boards).
 	Duplicated bool
+	// Shared: tables may share a set in a round (one copy, its boards passed between them).
+	Shared bool
 	// Phantom is the pair id that stands for a sit-out (an odd number of pairs), 0 if none.
 	Phantom int
 	Seats   []Seat
@@ -84,6 +90,42 @@ func key(a, b int) [2]int {
 	return [2]int{a, b}
 }
 
+// Next is where the boards of table t go after round r: the tables that play its set in round r+1.
+// None means the set rests on the relay stand (or the session is over); several, a duplicated
+// movement's copies.
+func (m Movement) Next(r, t int) []int {
+	set := 0
+	for _, s := range m.Seats {
+		if s.Round == r && s.Table == t {
+			set = s.Set
+		}
+	}
+	var out []int
+	for _, s := range m.Seats {
+		if s.Round == r+1 && s.Set == set {
+			out = append(out, s.Table)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+// SharedWith is the other table that plays the same set as table t in round r, 0 if none.
+func (m Movement) SharedWith(r, t int) int {
+	set := 0
+	for _, s := range m.Seats {
+		if s.Round == r && s.Table == t {
+			set = s.Set
+		}
+	}
+	for _, s := range m.Seats {
+		if s.Round == r && s.Set == set && s.Table != t {
+			return s.Table
+		}
+	}
+	return 0
+}
+
 // Validate checks that the movement is playable: nobody sits twice in a round, no two pairs meet
 // twice, no pair plays a set twice, and (unless boards are duplicated) no set is at two tables at once.
 func (m Movement) Validate() error {
@@ -91,7 +133,7 @@ func (m Movement) Validate() error {
 	type rs struct{ r, s int }
 	type ps struct{ p, s int }
 	type rt struct{ r, t int }
-	seated, inPlay, played, tables := map[rp]bool{}, map[rs]bool{}, map[ps]bool{}, map[rt]bool{}
+	seated, tablesOn, played, tables := map[rp]bool{}, map[rs]int{}, map[ps]bool{}, map[rt]bool{}
 	met := map[[2]int]int{}
 	for _, s := range m.Seats {
 		if s.Round < 1 || s.Round > m.Rounds || s.Table < 1 || s.Table > m.Tables || s.Set < 1 || s.Set > m.Sets {
@@ -121,10 +163,11 @@ func (m Movement) Validate() error {
 			played[ps{p, s.Set}] = true
 		}
 		if !m.Duplicated {
-			if inPlay[rs{s.Round, s.Set}] {
-				return fmt.Errorf("round %d: set %d at two tables", s.Round, s.Set)
+			n := tablesOn[rs{s.Round, s.Set}] + 1
+			tablesOn[rs{s.Round, s.Set}] = n
+			if n > 1 && !m.Shared {
+				return fmt.Errorf("round %d: set %d at %d tables", s.Round, s.Set, n)
 			}
-			inPlay[rs{s.Round, s.Set}] = true
 		}
 		if s.NS != 0 && s.EW != 0 {
 			if met[key(s.NS, s.EW)]++; met[key(s.NS, s.EW)] > 1 {

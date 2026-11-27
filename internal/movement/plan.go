@@ -13,10 +13,12 @@ type Option struct {
 	Note     string
 }
 
-// Options lists the movements that fit `pairs` pairs and a session of minBoards..maxBoards boards,
-// best first. The federation's preference: a Mitchell when there are enough tables (complete if the
-// number of tables is odd), a Howell (complete, or reduced) otherwise.
-func Options(pairs, minBoards, maxBoards int) []Option {
+// Options lists the movements that fit `pairs` pairs and a session of minBoards..maxBoards boards with
+// `copies` copies of the boards, best first. The federation's preference: a Mitchell when there are
+// enough tables (complete if the number of tables is odd), a Howell (complete, or reduced) otherwise.
+// Everything is playable with one copy; a small Howell (4-7 pairs) then shares boards between tables,
+// and with a copy for every table it gives each table its own instead.
+func Options(pairs, minBoards, maxBoards, copies int) []Option {
 	var out []Option
 	tables := (pairs + 1) / 2
 	for bpr := 2; bpr <= 5; bpr++ {
@@ -37,7 +39,10 @@ func Options(pairs, minBoards, maxBoards int) []Option {
 			if b := r * bpr; b >= minBoards && b <= maxBoards {
 				kind := Howell
 				if n < 8 {
-					kind = HowellDuplicated
+					kind = HowellShared
+					if copies >= n/2 {
+						kind = HowellDuplicated
+					}
 				}
 				out = append(out, Option{Kind: kind, Tables: n / 2, Rounds: r, BoardsPerRound: bpr, Boards: b, Complete: r == n-1})
 			}
@@ -52,7 +57,7 @@ func Options(pairs, minBoards, maxBoards int) []Option {
 		case Mitchell:
 		case SkipMitchell:
 			s += 1
-		case Howell:
+		case Howell, HowellDuplicated:
 			s += 2
 		default:
 			s += 3

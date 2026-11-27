@@ -83,7 +83,8 @@ const (
 	MetaTitle     = "title"
 	MetaDate      = "date" // YYYY-MM-DD
 	MetaBridgeBG  = "bridgebg_tournament"
-	MetaPairsPlan = "pairs_plan" // JSON: stages, finals, carry-over
+	MetaPairsPlan = "pairs_plan"   // JSON: stages, finals, carry-over
+	MetaCopies    = "board_copies" // copies of each board set the club has (1: one set, as dealt at the tables)
 )
 
 func (s *Store) SetMeta(key, value string) error {

@@ -53,3 +53,4 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
 @media print { .top, .actions, form { display: none; } body { background: #fff; } .card { border: 0; padding: 0; } }
 .red { color: var(--red); } .ct { white-space: nowrap; }
 .weight { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--accent); }
+.next { font-size: 12px; color: var(--accent); } .share { font-size: 12px; color: var(--warn-ink); }
