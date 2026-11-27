@@ -1,4 +1,4 @@
-# scorer
+# Score52
 
 Bridge scoring and movements for the Bulgarian Bridge Federation: pairs (Mitchell, Howell; MP and
 IMP; sessions, qualification, finals) and teams (IMP→VP, BAM; Swiss, Danish, round robin, knockout;

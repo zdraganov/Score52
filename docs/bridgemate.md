@@ -3,13 +3,13 @@
 Source: Bridgemate developer's guide, revision 54 (BCS 4.3.8),
 <https://www.bridgemate.com/resources/developer/BMdevguide.pdf>, and the templates at
 <https://www.bridgemate.com/resources/developer/> (`Template_Access2000.bws`, `Template_Access97.bws`,
-`samplefiles.zip` = the same two templates). These notes are what the scorer needs from it, mapped
+`samplefiles.zip` = the same two templates). These notes are what Score52 needs from it, mapped
 onto our engine. Read the guide itself for anything not here.
 
 ## The file
 
 - A `.bws` is an MS Access database (Access 97 or 2000 format, no password). BCS (Bridgemate Control
-  Software) opens it, talks to the base station, and writes results back into it. The scorer never
+  Software) opens it, talks to the base station, and writes results back into it. Score52 never
   talks to the hardware.
 - Read and write it over ODBC (Windows Access driver, installed with BCS) without locking it, since BCS
   has it open at the same time.
@@ -21,7 +21,7 @@ onto our engine. Read the guide itself for anything not here.
 - Columns we add ourselves must be named `custom_...` and go at the end of a table.
 - No indexes needed; every field is non-required.
 
-## What the scorer writes before a session
+## What Score52 writes before a session
 
 | Table | Rows | Our source |
 |---|---|---|
@@ -48,7 +48,7 @@ onto our engine. Read the guide itself for anything not here.
 - Every table must have a row for every round, including rounds it doesn't play.
 - Limits (Bridgemate II/III): 256 tables per server, table numbers ≤4095, pair numbers ≤4095,
   board numbers ≤127, ≤54 boards per round, ≤255 rounds, and per table rounds + boards ≤ 256.
-  The scorer must check these before writing.
+  Score52 must check these before writing.
 
 ## Starting BCS
 
@@ -88,10 +88,10 @@ Each entry or re-entry is a **new row** (autonumber `ID`); the latest row for a 
 round, when numbers are entered every round as in teams). Rows BCS changes get `Processed` = false. We
 look the number up and write `Name` + `Updated` = true + `EntrySource` = 0.
 
-## Correcting a result from the scorer
+## Correcting a result from Score52
 
 Update the `ReceivedData` row and set `ExternalUpdate` = **-1** in the same statement. BCS picks it up
-within ~15 s and the Bridgemates show the new score. BCS does not validate it, so the scorer must
+within ~15 s and the Bridgemates show the new score. BCS does not validate it, so Score52 must
 (e.g. no 7NT+1).
 
 ## Changing the movement mid-session
@@ -133,7 +133,7 @@ In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
 `C:\Program Files (x86)\Bridgemate Pro\BMPro.exe`, Magic Contest):
 
 - **Only the 32-bit Jet driver exists** (`Microsoft Access Driver (*.mdb)` under `WOW6432Node`), with no
-  64-bit Access driver. The scorer's Windows build is therefore `GOARCH=386`. That runs on 64-bit Windows,
+  64-bit Access driver. Score52's Windows build is therefore `GOARCH=386`. That runs on 64-bit Windows,
   and on ARM through emulation. `github.com/alexbrainman/odbc` builds for it with `CGO_ENABLED=0`.
 - Through that driver (tested with the 32-bit script host, as the Go probe was blocked; see below):
   copying `Template_Access2000.bws` and `ALTER TABLE ... ADD COLUMN` for the missing columns works,
@@ -153,7 +153,7 @@ In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
   be refused the same way on a director's PC with it on. That is a reason to code-sign the `.exe` (and
   results-sync).
 
-- **The scorer's own code, end to end on Windows** (`cmd/bwstool`, `GOARCH=386`): `create` copied the
+- **Score52's own code, end to end on Windows** (`cmd/bwstool`, `GOARCH=386`): `create` copied the
   template and wrote a 5-table Mitchell with Cyrillic names through `bridgemate.Write`, with client
   `MAGIC-VM` from `GetComputerNameW`. `bws-round.vbs` added two rounds of results to it as BCS would
   (it needs Magic Contest's `ReceivedData.custom_ProcessedMC` column, added for the test). `read`
@@ -163,6 +163,6 @@ In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
 ## Still open
 
 1. Bundle Bridgemate's template or build our own empty Access file: check the template's licence.
-2. Open a scorer-made file in BCS (`/f:[...]`, then `/s /r`). BCS seems to run as a single
+2. Open a Score52-made file in BCS (`/f:[...]`, then `/s /r`). BCS seems to run as a single
    instance: a second launch while it is open on another file did nothing.
 3. Real hardware `ReceivedData` rows (adjusted scores, wrong direction, erased) from an event's file.

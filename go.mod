@@ -1,4 +1,4 @@
-module bridge.bg/scorer
+module github.com/zdraganov/Score52
 
 go 1.26.0
 

@@ -12,9 +12,9 @@ import (
 	"sort"
 	"time"
 
-	"bridge.bg/scorer/internal/bridgemate"
-	"bridge.bg/scorer/internal/movement"
-	"bridge.bg/scorer/internal/pairs"
+	"github.com/zdraganov/Score52/internal/bridgemate"
+	"github.com/zdraganov/Score52/internal/movement"
+	"github.com/zdraganov/Score52/internal/pairs"
 )
 
 func main() {
@@ -37,7 +37,7 @@ func main() {
 				{Number: fmt.Sprint(1001 + 2*p), Name: fmt.Sprintf("Играч %d Юг", p)},
 			}
 		}
-		s, err := bridgemate.PairsSetup("Тест на scorer", time.Now(), bridgemate.PairsSection{
+		s, err := bridgemate.PairsSetup("Тест на Score52", time.Now(), bridgemate.PairsSection{
 			Letter: "A", Movement: m, BoardsPerRound: 3, Scoring: pairs.MethodMP, Players: players})
 		check(err)
 		pc, err := bridgemate.ComputerName()

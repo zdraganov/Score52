@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/score"
 )
 
 type OpKind string

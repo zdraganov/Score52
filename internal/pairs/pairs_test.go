@@ -3,7 +3,7 @@ package pairs
 import (
 	"testing"
 
-	"bridge.bg/scorer/internal/movement"
+	"github.com/zdraganov/Score52/internal/movement"
 )
 
 // Two sessions of a 9-table Mitchell: the second should have no repeated opponents and mix the lines.

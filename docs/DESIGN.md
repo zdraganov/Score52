@@ -1,4 +1,4 @@
-# Scorer — design
+# Score52 — design
 
 Scoring and movement program for the Bulgarian Bridge Federation: pairs (MP and IMP) and teams
 (IMP → VP, BAM), multi-session and multi-stage, offline at the venue, BridgeMate for result entry,
@@ -26,7 +26,7 @@ SQLite (`modernc.org/sqlite`) and a pure-Go ODBC binding on Windows; those are t
 dependencies.
 
 ```
-cmd/scorer/          main: flags, mode, opens the browser
+cmd/score52/         main: flags, mode, opens the browser
 internal/score/      contract score, IMP, matchpoints (Neuberg), cross-IMP, Butler, VP, BAM    [done]
 internal/movement/   Mitchell, skip Mitchell, Howell (shared boards), duplicated round robin,
                      validation, choosing a movement for a number of pairs and boards           [done]
@@ -137,7 +137,7 @@ so a change on either side that breaks the other fails here.
 ## BridgeMate
 
 BridgeMate Control Software (BCS) talks to the scoring program through an Access database (`.bws`).
-The scorer writes the event's sections, tables, round data (table, round, NS, EW, low/high board) and
+Score52 writes the event's sections, tables, round data (table, round, NS, EW, low/high board) and
 player numbers into it, starts BCS on it, and polls `ReceivedData` for results, which go into the
 event log as they arrive. A movement change mid-session rewrites `RoundData` for the remaining rounds.
 

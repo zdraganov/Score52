@@ -7,7 +7,7 @@ import (
 	"math/rand/v2"
 	"sort"
 
-	"bridge.bg/scorer/internal/movement"
+	"github.com/zdraganov/Score52/internal/movement"
 )
 
 // History is what earlier sessions did: how often two pairs met, and how often they were in the same

@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"bridge.bg/scorer/internal/movement"
-	"bridge.bg/scorer/internal/pairs"
+	"github.com/zdraganov/Score52/internal/movement"
+	"github.com/zdraganov/Score52/internal/pairs"
 )
 
 // ScoringType is Section.ScoringType.
@@ -68,7 +68,7 @@ type PlayerRow struct {
 	Name           string // ≤18
 }
 
-// Setup is everything the scorer writes into a .bws before play.
+// Setup is everything Score52 writes into a .bws before play.
 type Setup struct {
 	Session  SessionRow
 	Sections []SectionRow

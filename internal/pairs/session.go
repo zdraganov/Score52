@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"bridge.bg/scorer/internal/movement"
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/movement"
+	"github.com/zdraganov/Score52/internal/score"
 )
 
 // Method is how a pairs session scores its boards.

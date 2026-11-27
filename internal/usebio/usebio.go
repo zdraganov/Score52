@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"time"
 
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/score"
 )
 
-const Program = "BBF Scorer"
+const Program = "Score52"
 
 type Player struct {
 	Name         string
@@ -34,7 +34,7 @@ const (
 type PairsEvent struct {
 	Title   string
 	Date    time.Time
-	Version string // the scorer's version
+	Version string // Score52's version
 	Method  Method
 	Pairs   []Pair
 	Boards  []Board

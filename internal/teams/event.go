@@ -13,7 +13,7 @@ import (
 	"math"
 	"sort"
 
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/score"
 )
 
 type TeamID int

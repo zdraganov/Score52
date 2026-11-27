@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"bridge.bg/scorer/internal/movement"
-	"bridge.bg/scorer/internal/pairs"
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/movement"
+	"github.com/zdraganov/Score52/internal/pairs"
+	"github.com/zdraganov/Score52/internal/score"
 
 	_ "modernc.org/sqlite"
 )

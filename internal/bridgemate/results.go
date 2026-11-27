@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"bridge.bg/scorer/internal/pairs"
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/pairs"
+	"github.com/zdraganov/Score52/internal/score"
 )
 
 // Received is a row of ReceivedData as BCS writes it.
@@ -31,10 +31,10 @@ type Received struct {
 type Status int
 
 const (
-	Played      Status = iota
-	Adjusted           // an artificial score: AdjNS/AdjEW percentages
-	NotPlayed          // "Not played": the TD decides later
-	TDPending          // "Arbitral score": the TD has to enter it
+	Played    Status = iota
+	Adjusted         // an artificial score: AdjNS/AdjEW percentages
+	NotPlayed        // "Not played": the TD decides later
+	TDPending        // "Arbitral score": the TD has to enter it
 )
 
 // Board is the current result of one board at one table.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"bridge.bg/scorer/internal/score"
+	"github.com/zdraganov/Score52/internal/score"
 )
 
 func pairsEvent() PairsEvent {

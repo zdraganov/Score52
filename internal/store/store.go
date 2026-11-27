@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"bridge.bg/scorer/internal/movement"
-	"bridge.bg/scorer/internal/teams"
+	"github.com/zdraganov/Score52/internal/movement"
+	"github.com/zdraganov/Score52/internal/teams"
 
 	_ "modernc.org/sqlite"
 )

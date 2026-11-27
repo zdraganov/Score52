@@ -11,16 +11,16 @@ import (
 	"strings"
 	"testing"
 
-	"bridge.bg/scorer/internal/movement"
-	"bridge.bg/scorer/internal/pairs"
-	"bridge.bg/scorer/internal/score"
-	"bridge.bg/scorer/internal/teams"
-	"bridge.bg/scorer/internal/usebio"
+	"github.com/zdraganov/Score52/internal/movement"
+	"github.com/zdraganov/Score52/internal/pairs"
+	"github.com/zdraganov/Score52/internal/score"
+	"github.com/zdraganov/Score52/internal/teams"
+	"github.com/zdraganov/Score52/internal/usebio"
 )
 
 func open(t *testing.T) (*Store, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "event.scorer")
+	path := filepath.Join(t.TempDir(), "event.score52")
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
