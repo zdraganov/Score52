@@ -28,10 +28,11 @@
   <h2>Сесии</h2>
   {{with .Data.Sessions}}
   <ul class="list">
-    {{range .}}<li><a href="/e/{{$.EventID}}/s/{{.Slot}}"><b>{{.Name}}</b></a> <span class="muted">{{.Movement.Tables}} маси · {{.Movement.Rounds}} рунда × {{.BoardsPerRound}} раздавания</span></li>{{end}}
+    {{range .}}<li><a href="/e/{{$.EventID}}/s/{{.Slot}}"><b>{{.Name}}</b></a> <span class="muted">{{.Movement.Tables}} маси · {{.Movement.Rounds}} рунда × {{.BoardsPerRound}}</span></li>{{end}}
   </ul>
+  <p class="actions"><a class="button" href="/e/{{$.EventID}}/standings">Класиране и финали</a></p>
   {{else}}<p class="muted">Няма сесии.</p>{{end}}
-  {{if ge (len .Data.Entries) 4}}<p><a class="button" href="/e/{{.EventID}}/new-session">+ Нова сесия</a></p>{{else}}<p class="muted">За сесия трябват поне 4 двойки.</p>{{end}}
+  {{if ge (len .Data.Entries) 4}}<p><a class="button{{if .Data.Sessions}} secondary{{end}}" href="/e/{{.EventID}}/new-session">+ Сесия на квалификацията</a></p>{{else}}<p class="muted">За сесия трябват поне 4 двойки.</p>{{end}}
 </section>
 </div>
 {{end}}

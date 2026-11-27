@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1>Класиране <span class="muted small">{{.Event}}</span></h1>
+<p class="actions">
+  <a class="button secondary" href="/e/{{.EventID}}">Към състезанието</a>
+  <button class="secondary" onclick="print()">Печат</button>
+</p>
+
+{{range .Data.Finals}}{{template "stage" dict "S" . "Root" $}}{{end}}
+{{template "stage" dict "S" .Data.Q "Root" $}}
+
+{{if .Data.CanPlan}}
+<section class="card">
+  <h2>Финали</h2>
+  <p class="muted">Разделя класирането на квалификацията: финал A – първите N двойки, B – следващите... 0 значи „всички останали“, празно – няма такъв финал.</p>
+  <form method="post" action="/e/{{.EventID}}/finals" class="inline">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Финал A <input type="number" name="nA" min="4" class="num" placeholder="брой" required></label>
+    <label>Финал B <input type="number" name="nB" min="0" class="num" placeholder="0 = ост."></label>
+    <label>Финал C <input type="number" name="nC" min="0" class="num"></label>
+    <label>Пренасяне <input type="number" name="carry" value="25" min="0" max="100" step="any" class="num"> %</label>
+    <button>Раздели</button>
+  </form>
+  <p class="muted small">При мачпойнти: общо = пренасяне × квалификация % + (100 − пренасяне) × финал %. При импове: пренасяне × импове от квалификацията + финал.</p>
+</section>
+{{end}}
+{{end}}
+
+{{define "stage"}}{{$s := .S}}{{$root := .Root}}
+<section class="card">
+  <h2>{{if $s.Stage}}Финал {{$s.Stage}}{{if $s.Carry}} <span class="muted small">пренасяне {{pct100 $s.Carry}}%</span>{{end}}{{else}}Квалификация{{end}}</h2>
+  <p class="actions">
+    {{range $s.Sessions}}<a class="button secondary" href="/e/{{$root.EventID}}/s/{{.Slot}}">{{.Name}}</a>{{end}}
+    <a class="button" href="/e/{{$root.EventID}}/new-session{{if $s.Stage}}?stage={{$s.Stage}}{{end}}">+ Сесия</a>
+    {{if $s.Sessions}}<a class="button secondary" href="/e/{{$root.EventID}}/stage/{{if $s.Stage}}{{$s.Stage}}{{else}}q{{end}}/usebio.xml">USEBIO</a>{{end}}
+  </p>
+  {{if $s.Rows}}
+  <div class="scroll">
+  <table class="tbl rank">
+    <thead><tr><th>Място</th><th>Двойка</th>{{if $s.Stage}}<th class="num">Квалиф.</th>{{end}}{{range $s.Sessions}}<th class="num">{{.Name}}</th>{{end}}<th class="num">Общо{{if $s.MP}} %{{end}}</th></tr></thead>
+    <tbody>
+    {{range $s.Rows}}<tr>
+      <td>{{if .Boards}}{{.Rank}}{{else}}–{{end}}</td><td>{{.Names}}</td>
+      {{if $s.Stage}}<td class="num muted">{{num .Carry}}</td>{{end}}
+      {{range .PerSession}}<td class="num">{{if .}}{{num (deref .)}}{{else}}<span class="muted">–</span>{{end}}</td>{{end}}
+      <td class="num"><b>{{if .Boards}}{{pct .Total.Total}}{{else}}–{{end}}</b></td>
+    </tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted">Още няма резултати.</p>{{end}}
+</section>
+{{end}}

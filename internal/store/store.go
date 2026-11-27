@@ -226,6 +226,7 @@ type Session struct {
 	Movement       movement.Movement
 	Seating        []int64 // entry id at movement number i+1; 0 for the phantom
 	Status         string
+	Stage          string // '' qualifying, 'A', 'B'... a final
 }
 
 // SaveSession inserts a session, or replaces the one in the same slot (keeping its results).
@@ -245,16 +246,17 @@ func (s *Store) SaveSession(x Session) (int64, error) {
 		x.Status = "planned"
 	}
 	var id int64
-	err := s.db.QueryRow(`INSERT INTO sessions (slot, name, scoring, boards_per_round, first_board, movement, seating, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	err := s.db.QueryRow(`INSERT INTO sessions (slot, name, scoring, boards_per_round, first_board, movement, seating, status, stage)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (slot) DO UPDATE SET name = excluded.name, scoring = excluded.scoring, boards_per_round = excluded.boards_per_round,
-			first_board = excluded.first_board, movement = excluded.movement, seating = excluded.seating, status = excluded.status
-		RETURNING id`, x.Slot, x.Name, x.Scoring, x.BoardsPerRound, x.FirstBoard, string(m), string(seat), x.Status).Scan(&id)
+			first_board = excluded.first_board, movement = excluded.movement, seating = excluded.seating, status = excluded.status,
+			stage = excluded.stage
+		RETURNING id`, x.Slot, x.Name, x.Scoring, x.BoardsPerRound, x.FirstBoard, string(m), string(seat), x.Status, x.Stage).Scan(&id)
 	return id, err
 }
 
 func (s *Store) Sessions() ([]Session, error) {
-	rows, err := s.db.Query(`SELECT id, slot, name, scoring, boards_per_round, first_board, movement, seating, status FROM sessions ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, slot, name, scoring, boards_per_round, first_board, movement, seating, status, stage FROM sessions ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +265,7 @@ func (s *Store) Sessions() ([]Session, error) {
 	for rows.Next() {
 		var x Session
 		var m, seat string
-		if err := rows.Scan(&x.ID, &x.Slot, &x.Name, &x.Scoring, &x.BoardsPerRound, &x.FirstBoard, &m, &seat, &x.Status); err != nil {
+		if err := rows.Scan(&x.ID, &x.Slot, &x.Name, &x.Scoring, &x.BoardsPerRound, &x.FirstBoard, &m, &seat, &x.Status, &x.Stage); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(m), &x.Movement); err != nil {

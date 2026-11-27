@@ -1,6 +1,8 @@
 {{define "content"}}
-<h1>Нова сесия <span class="muted small">{{.Data.Pairs}} двойки</span></h1>
+<h1>{{.Data.StageName}}: сесия {{.Data.Number}} <span class="muted small">{{.Data.Pairs}} двойки</span></h1>
+<p class="muted">{{if .Data.Mixed}}Двойките се разместват: който вече се е срещал, не се среща пак, доколкото движението позволява, и линиите се смесват.{{else if .Data.Stage}}Първата сесия на финала подрежда двойките по класирането от квалификацията, разпределени между линиите.{{else}}Двойките заемат номерата по реда на въвеждане.{{end}}</p>
 <form method="get" class="inline card">
+  {{if .Data.Stage}}<input type="hidden" name="stage" value="{{.Data.Stage}}">{{end}}
   <label>Раздавания от <input type="number" name="min" value="{{.Data.Min}}" min="1" max="127" class="num"></label>
   <label>до <input type="number" name="max" value="{{.Data.Max}}" min="1" max="127" class="num"></label>
   <button class="secondary">Покажи</button>
@@ -12,13 +14,14 @@
 <form method="post" action="/e/{{$.EventID}}/sessions" class="card option{{if eq $i 0}} best{{end}}">
   <input type="hidden" name="t" value="{{$.Token}}">
   <input type="hidden" name="kind" value="{{$o.Kind}}">
+  <input type="hidden" name="stage" value="{{$.Data.Stage}}">
   <input type="hidden" name="tables" value="{{$o.Tables}}">
   <input type="hidden" name="rounds" value="{{$o.Rounds}}">
   <input type="hidden" name="bpr" value="{{$o.BoardsPerRound}}">
   <h3>{{$o.Name}}{{if $o.Complete}} <span class="badge">пълен</span>{{end}}{{if eq $i 0}} <span class="badge good">препоръчан</span>{{end}}</h3>
   <p class="big">{{$o.Boards}} раздавания</p>
   <p class="muted">{{$o.Tables}} маси · {{$o.Rounds}} рунда × {{$o.BoardsPerRound}}</p>
-  <label>Точкуване <select name="method">{{range $k, $v := $.Data.Methods}}<option value="{{$k}}"{{if eq $k "mp"}} selected{{end}}>{{$v}}</option>{{end}}</select></label>
+  <label>Точкуване <select name="method">{{range $k, $v := $.Data.Methods}}<option value="{{$k}}"{{if eq $k $.Data.Method}} selected{{end}}>{{$v}}</option>{{end}}</select></label>
   <button>Избери</button>
 </form>
 {{end}}
