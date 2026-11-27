@@ -52,3 +52,4 @@ button.danger:hover { color: var(--red); }
 code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
 @media print { .top, .actions, form { display: none; } body { background: #fff; } .card { border: 0; padding: 0; } }
 .red { color: var(--red); } .ct { white-space: nowrap; }
+.weight { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--accent); }
