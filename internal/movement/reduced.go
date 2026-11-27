@@ -3,6 +3,7 @@ package movement
 import (
 	"fmt"
 	"math/rand/v2"
+	"sort"
 )
 
 // NewReducedHowell is a Howell for `pairs` pairs over `rounds` rounds on at most maxSets sets: the first
@@ -183,6 +184,27 @@ func assignSets(m *Movement, sets, cap int) bool {
 		move(i, bestC)
 	}
 	return false
+}
+
+// SideSets are, by section, the sets some round has at two tables: each needs a second copy, on an empty
+// table, for the table that shares it (the BBF TD's way).
+func (m Movement) SideSets() map[int][]int {
+	out := map[int][]int{}
+	seen := map[[2]int]bool{}
+	for r := 1; r <= m.Rounds; r++ {
+		on := map[[2]int]int{} // section, set
+		for _, s := range m.Round(r) {
+			k := [2]int{s.Section, s.Set}
+			if on[k]++; on[k] == 2 && !seen[k] {
+				seen[k] = true
+				out[s.Section] = append(out[s.Section], s.Set)
+			}
+		}
+	}
+	for k := range out {
+		sort.Ints(out[k])
+	}
+	return out
 }
 
 // Duplicates is how many sets a round needs twice at most (tables sharing a set): the extra copies.
