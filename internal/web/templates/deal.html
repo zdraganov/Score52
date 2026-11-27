@@ -23,7 +23,7 @@
   <p class="big">стига за {{$o.Down}}–{{$d.To}} двойки</p>
   <p class="muted">{{if $o.Duplicates}}до {{$o.Duplicates}} маси на рунд делят комплект с друга маса{{else}}никоя маса не дели комплект{{end}}</p>
   <table class="tbl small">
-    {{range $o.Rows}}<tr><td class="num">{{.Pairs}}</td><td>{{with .Layout}}{{range $k, $x := .Sections}}{{if $k}} + {{end}}{{if eq $x.Kind "howell"}}Хауел {{else}}Мичъл {{end}}{{$x.Tables}}{{end}} маси{{if .SitOuts}} · {{.SitOuts}} почиват{{end}}{{if .Duplicates}} · {{.Duplicates}} делят{{end}}{{else}}<span class="muted">няма движение</span>{{end}}</td></tr>{{end}}
+    {{range $o.Rows}}<tr><td class="num">{{.Pairs}}</td><td>{{with .Layout}}{{range $k, $x := .Sections}}{{if $k}} + {{end}}{{if eq $x.Kind "howell"}}Хауел {{else if eq $x.Kind "web-mitchell"}}Уеб Мичъл {{else if eq $x.Kind "appendix-mitchell"}}Мичъл с апендикс {{else}}Мичъл {{end}}{{$x.Tables}}{{end}} маси{{if .SitOuts}} · {{.SitOuts}} почиват{{end}}{{if .Duplicates}} · {{.Duplicates}} делят{{end}}{{else}}<span class="muted">няма движение</span>{{end}}</td></tr>{{end}}
   </table>
   <button>Раздадено така</button>
 </form>

@@ -19,6 +19,8 @@ var kindNames = map[movement.Kind]string{
 	movement.Mitchell:         "Мичъл",
 	movement.SkipMitchell:     "Мичъл с прескачане",
 	movement.RelayMitchell:    "Мичъл с поделен комплект и стойка",
+	movement.WebMitchell:      "Уеб Мичъл",
+	movement.AppendixMitchell: "Мичъл с апендикс",
 	movement.Howell:           "Хауел",
 	movement.HowellDuplicated: "Хауел с копия на раздаванията",
 	movement.HowellShared:     "Хауел с поделени раздавания",
@@ -353,6 +355,9 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	// sets some round has at two tables: a second copy goes on an empty table (the TD's way)
 	var side []string
 	for k, sets := range m.SideSets() {
+		if m.Duplicated { // two copies of the boards by design (a Web or Appendix Mitchell): no side table
+			break
+		}
 		var ss []string
 		for _, x := range sets {
 			b := boardsOf(movement.Seat{Set: x}, d.BoardsPerRound, d.FirstBoard)

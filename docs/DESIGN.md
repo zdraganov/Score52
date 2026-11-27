@@ -97,8 +97,14 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   - tables sharing a set in a round take it from a **second copy on an empty table**: the plan lists those
     sets. A reduced Howell with more tables than sets (boards up to 32: 16 sets) finds its sets by local
     search, sharing as little as can be.
-  - Pending: the **appendix Mitchell** he uses for 32 and 36 pairs (two Howells until it's defined), and
-    the 12-table Mitchell with one switch round.
+  - **32 pairs: Web Mitchell** (16 tables: NS stay, EW move up a table; tables 1–8 pass boards down,
+    9–16 up, mirrored tables on the same set: two copies of boards 1–26); **36 pairs: Appendix Mitchell
+    13+5** (a 13-table Mitchell, fixed NS at tables 1–5, travelling NS round tables 6–13 and the 5-table
+    appendix, which plays the same sets as tables 1–5). Both scrambled (arrow switches in set rounds) so the
+    field is one. Generated from formulas that reproduce Magic Contest's own movements row for row (its
+    Bridgemate files for 16 tables and 13+5, 13 rounds).
+  - The new-session page lists four different movements, the TD's preference first.
+  - Pending: the 12-table Mitchell with one switch round.
   The deal advice speaks in whole boxes 1–32.
 - **Relay-and-stand Mitchell** (even tables, all rounds): the first and the last table share a set, the
   stand is between tables T/2 and T/2+1, boards move down a table through it.
