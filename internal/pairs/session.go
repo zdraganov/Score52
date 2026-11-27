@@ -46,7 +46,7 @@ type SessionResult struct {
 func ScoreSession(m movement.Movement, bpr, first int, method Method, butlerTrim float64, lines []Line) (SessionResult, error) {
 	expected := map[int]int{}
 	for _, s := range m.Seats {
-		if s.NS == 0 || s.EW == 0 || s.NS == m.Phantom || s.EW == m.Phantom {
+		if s.NS == 0 || s.EW == 0 || m.IsPhantom(s.NS) || m.IsPhantom(s.EW) {
 			continue
 		}
 		for i := 0; i < bpr; i++ {

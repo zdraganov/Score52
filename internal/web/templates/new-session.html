@@ -22,7 +22,7 @@
   <input type="hidden" name="bpr" value="{{$l.BoardsPerRound}}">
   <h3>{{len $l.Sections}} {{if eq (len $l.Sections) 1}}секция{{else}}секции{{end}}{{if eq $i 0}} <span class="badge good">препоръчано</span>{{end}}</h3>
   <p class="big">{{$l.Boards}} раздавания</p>
-  <p class="muted">{{range $k, $x := $l.Sections}}{{if $k}} · {{end}}{{$x.Letter}}: {{$x.Tables}} маси{{end}}<br>{{$l.Rounds}} рунда × {{$l.BoardsPerRound}} · всяко раздаване се играе {{$l.Played}} пъти<br>трябват {{$l.Copies}} × раздавания 1–{{$l.BoardsPerCopy}}</p>
+  <p class="muted">{{range $k, $x := $l.Sections}}{{if $k}} · {{end}}{{$x.Letter}}: {{$x.Tables}} маси{{if lt $x.Pairs (mul 2 $x.Tables)}} (една двойка почива){{end}}{{end}}<br>{{$l.Rounds}} рунда × {{$l.BoardsPerRound}} · всяко раздаване се играе {{$l.Played}} пъти<br>трябват {{$l.Copies}} × раздавания 1–{{$l.BoardsPerCopy}}{{if $l.Duplicates}} и {{$l.Duplicates}} дублиран{{if gt $l.Duplicates 1}}и{{end}} комплект{{if gt $l.Duplicates 1}}а{{end}} (маси 1 и 2 играят един и същ){{end}}</p>
   <label>Точкуване <select name="method">{{range $k, $v := $.Data.Methods}}<option value="{{$k}}"{{if eq $k $.Data.Method}} selected{{end}}>{{$v}}</option>{{end}}</select></label>
   <button>Избери</button>
 </form>

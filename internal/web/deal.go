@@ -55,8 +55,9 @@ func (s *Server) dealPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if d.Boards == 0 {
-		d.Boards, d.Tol = 26, 2
+		d.Boards = 26
 	}
+	d.Tol = 0 // a pair plays exactly the boards set
 	var opts []dealOption
 	if d.To >= 4 && d.From >= 4 && d.From <= d.To && d.To-d.From <= 80 && d.Boards > 0 {
 		for _, a := range movement.Advise(d.From, d.To, d.Boards, d.Tol) {

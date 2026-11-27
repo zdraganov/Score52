@@ -18,6 +18,7 @@ import (
 var kindNames = map[movement.Kind]string{
 	movement.Mitchell:         "Мичъл",
 	movement.SkipMitchell:     "Мичъл с прескачане",
+	movement.RelayMitchell:    "Мичъл с поделен комплект и стойка",
 	movement.Howell:           "Хауел",
 	movement.HowellDuplicated: "Хауел с копия на раздаванията",
 	movement.HowellShared:     "Хауел с поделени раздавания",
@@ -71,7 +72,7 @@ func (s *Server) newSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// a field in sections: the layouts that fit the boards wanted and what was dealt
 	dl := loadDeal(st)
-	target, tol := dl.Boards, dl.Tol
+	target, tol := dl.Boards, 0 // a pair plays exactly the boards planned
 	if r.URL.Query().Get("min") != "" || target == 0 {
 		target, tol = (lo+hi)/2, (hi-lo)/2
 	}
@@ -235,7 +236,7 @@ func sessionDataOf(st *store.Store, x store.Session) (*sessionData, error) {
 	}
 	m := x.Movement
 	for _, seat := range m.Seats {
-		if seat.NS == 0 || seat.EW == 0 || seat.NS == m.Phantom || seat.EW == m.Phantom {
+		if seat.NS == 0 || seat.EW == 0 || m.IsPhantom(seat.NS) || m.IsPhantom(seat.EW) {
 			continue
 		}
 		for _, b := range boardsOf(seat, x.BoardsPerRound, x.FirstBoard) {
@@ -306,7 +307,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, seat := range m.Seats {
 		b := boardsOf(seat, d.BoardsPerRound, d.FirstBoard)
-		c := planCell{NS: m.Label(seat.NS), EW: m.Label(seat.EW), First: b[0], Last: b[len(b)-1], SitOut: seat.NS == m.Phantom || seat.EW == m.Phantom}
+		c := planCell{NS: m.Label(seat.NS), EW: m.Label(seat.EW), First: b[0], Last: b[len(b)-1], SitOut: m.IsPhantom(seat.NS) || m.IsPhantom(seat.EW)}
 		if m.Shared {
 			var with []string
 			for _, s := range m.Round(seat.Round) {
@@ -376,7 +377,7 @@ func travRows(d *sessionData, board int) []travRow {
 	}
 	var rows []travRow
 	for _, seat := range m.Seats {
-		if seat.NS == 0 || seat.EW == 0 || seat.NS == m.Phantom || seat.EW == m.Phantom {
+		if seat.NS == 0 || seat.EW == 0 || m.IsPhantom(seat.NS) || m.IsPhantom(seat.EW) {
 			continue
 		}
 		in := false
@@ -607,7 +608,7 @@ func standings(d *sessionData) ([][]standing, string, error) {
 	field := func(ps []int) []standing {
 		var out []standing
 		for _, p := range ps {
-			if p == m.Phantom || d.Pairs[p] == "" {
+			if m.IsPhantom(p) || d.Pairs[p] == "" {
 				continue
 			}
 			t := res.Totals[p]
