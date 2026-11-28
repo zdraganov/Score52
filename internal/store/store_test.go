@@ -235,3 +235,30 @@ func TestTeamsSaveLoad(t *testing.T) {
 		t.Error("shorter log accepted")
 	}
 }
+
+func TestTeamBoards(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "t.score52"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	b := TeamBoard{Round: 1, Home: 1, Away: 2, Room: RoomOpen, Board: 3, Contract: "4S", Declarer: "N", Tricks: 10, Score: 620}
+	for _, x := range []TeamBoard{b, b} { // the same twice: no history
+		if err := s.PutTeamBoard(x); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b.Tricks, b.Score = 9, -100
+	if err := s.PutTeamBoard(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteTeamBoard(1, 1, 2, RoomOpen, 3); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.db.QueryRow(`SELECT count(*) FROM team_board_history`).Scan(&n)
+	got, _ := s.TeamBoards(0)
+	if n != 2 || len(got) != 0 {
+		t.Errorf("history %d (want 2: the correction and the delete), %d boards left", n, len(got))
+	}
+}

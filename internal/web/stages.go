@@ -183,6 +183,10 @@ func (s *Server) standings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if eventKind(st) == kindTeams {
+		s.teamsStandings(w, st, p)
+		return
+	}
 	sessions, err := st.Sessions()
 	if err != nil {
 		s.fail(w, http.StatusInternalServerError, err)

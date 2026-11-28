@@ -138,6 +138,16 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
 
 ## Teams
 
+- **Screens (first version: Swiss, Danish, round robin)**: an event is created "по отбори"; teams are a
+  name and 4-6 players, seeded in the order entered. Start fixes the format, boards per match and the
+  bye's VPs (WBF 20-point scale). Each round is paired from the event page with its boards (count and
+  first board). A match is entered board by board, both rooms: the open room seats the home team NS,
+  the closed room the away team; an adjusted score is IMPs to each team for the board. When every board
+  is in, the match's IMPs go into the event log and give the VPs; a correction records it again. The
+  boards are in `team_boards` with a history, as pairs results. Standings show each round's VPs; the
+  USEBIO file is the event's. Next: splitting into groups, exchange, K/O with carry and extra boards,
+  BridgeMate for teams, BAM.
+
 An event is a log of matches plus the current groups. Standings are always worked out from the log,
 so a corrected score reranks everything after it.
 
