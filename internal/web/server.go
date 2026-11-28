@@ -105,6 +105,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /e/{id}/r/{round}/m/{home}", s.teamMatch)
 	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}", s.saveTeamMatch)
 	mux.HandleFunc("GET /e/{id}/teams/usebio.xml", s.teamsUsebio)
+	mux.HandleFunc("POST /e/{id}/teams/split", s.splitTeams)
+	mux.HandleFunc("POST /e/{id}/teams/exchange", s.exchangeTeams)
+	mux.HandleFunc("POST /e/{id}/teams/format", s.formatTeams)
+	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}/carry", s.koCarry)
+	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}/playoff", s.koPlayoff)
 	return s.guard(mux)
 }
 

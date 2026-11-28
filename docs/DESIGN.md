@@ -145,8 +145,16 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   the closed room the away team; an adjusted score is IMPs to each team for the board. When every board
   is in, the match's IMPs go into the event log and give the VPs; a correction records it again. The
   boards are in `team_boards` with a history, as pairs results. Standings show each round's VPs; the
-  USEBIO file is the event's. Next: splitting into groups, exchange, K/O with carry and extra boards,
-  BridgeMate for teams, BAM.
+  USEBIO file is the event's.
+- **Groups and K/O screens**: between rounds the director splits a group by its ranking into new
+  groups (name, number of teams, format, carry: all / a percentage / none / head-to-head), exchanges the
+  last n of one group with the first n of another (the movers' carry chosen at the time), or changes a
+  group's format from the next round. Each group can play its own number of boards in a round. A K/O
+  match takes the director's carry-over in IMPs; a tie (after carry-over) is settled by extra boards,
+  entered as each team's IMPs, again while still level; the next round waits for it. A group with
+  nothing left to play (K/O decided, round robin complete) sits out while the others go on. Standings
+  are per group, a K/O group by how far each team got; the USEBIO file ranks group after group.
+- Next: BridgeMate for teams, BAM.
 
 An event is a log of matches plus the current groups. Standings are always worked out from the log,
 so a corrected score reranks everything after it.

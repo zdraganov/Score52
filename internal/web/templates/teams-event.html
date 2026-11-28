@@ -49,27 +49,71 @@
   <form method="post" action="/e/{{.EventID}}/teams/pair" class="inline">
     <input type="hidden" name="t" value="{{.Token}}">
     <label>Раздавания <input type="number" name="boards" value="{{$d.Setup.Boards}}" min="1" max="64" class="num"></label>
+    {{if gt (len $d.Groups) 1}}{{range $i, $g := $d.Groups}}<label>{{$g.Label}} <input type="number" name="boards{{$i}}" placeholder="{{$d.Setup.Boards}}" min="1" max="64" class="num" title="раздавания в {{$g.Label}}, ако са различни"></label>{{end}}{{end}}
     <label>от раздаване <input type="number" name="first" value="{{$d.NextFirst}}" min="1" max="128" class="num"></label>
     <button>Чифтосай рунд {{$d.NextRound}}</button>
   </form>
-  {{else}}<p class="muted">Следващият рунд се чифтосва, когато всички мачове на този са въведени.</p>{{end}}
+  {{else}}<p class="muted">Следващият рунд се чифтосва, когато всички мачове на този са въведени (и равенствата на директните елиминации са решени).</p>{{end}}
   {{end}}
 </section>
 </div>
+{{if $d.Started}}
+<section class="card" id="groups">
+  <h2>Групи</h2>
+  <table class="tbl">
+    <thead><tr><th>Група</th><th>Система</th><th class="num">Отбори</th><th>Смяна на системата</th></tr></thead>
+    <tbody>{{range $d.Groups}}<tr><td><b>{{.Label}}</b></td><td>{{.Format}}</td><td class="num">{{.Teams}}</td>
+      <td>{{if $d.CanChange}}<form method="post" action="/e/{{$.EventID}}/teams/format" class="inline"><input type="hidden" name="t" value="{{$.Token}}"><input type="hidden" name="group" value="{{.Name}}">
+        <select name="format">{{range $f := "swiss danish round-robin knockout" | fields}}<option value="{{$f}}">{{index $d.Formats $f}}</option>{{end}}</select> <button class="secondary">Смени от следващия рунд</button></form>{{end}}</td></tr>{{end}}</tbody>
+  </table>
+  {{if $d.CanChange}}
+  <details class="more"><summary>Разделяне на групи (по класирането)</summary>
+  <form method="post" action="/e/{{.EventID}}/teams/split">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <p class="inline"><label>Разделя се <select name="from">{{range $d.Groups}}<option value="{{.Name}}">{{.Label}}</option>{{end}}</select></label></p>
+    <table class="tbl">
+      <thead><tr><th>Нова група</th><th>Отбори (подред от класирането)</th><th>Система</th><th>Пренася</th><th>%</th></tr></thead>
+      <tbody>{{range $k := "1 2 3 4" | fields}}<tr>
+        <td><input name="name{{$k}}" class="res" value="{{if eq $k "1"}}A{{else if eq $k "2"}}B{{end}}" placeholder="C"></td>
+        <td><input type="number" name="count{{$k}}" class="num" min="2" placeholder="{{if eq $k "1"}}8{{else}}останалите{{end}}"></td>
+        <td><select name="format{{$k}}">{{range $f := "swiss danish round-robin knockout" | fields}}<option value="{{$f}}"{{if and (eq $k "1") (eq $f "knockout")}} selected{{end}}>{{index $d.Formats $f}}</option>{{end}}</select></td>
+        <td>{{template "carry" (dict "Name" (printf "carry%s" $k) "Pct" (printf "pct%s" $k))}}</td>
+      </tr>{{end}}</tbody>
+    </table>
+    <p class="muted small">Първата група взима първите отбори от класирането, следващата – следващите; празен брой е „останалите“. Пренасянето е какво носи отборът в новата група: всичко досега (или процент от него), нищо, или точките от срещите с отборите от новата му група.</p>
+    <button>Раздели</button>
+  </form>
+  </details>
+  {{if gt (len $d.Groups) 1}}
+  <details class="more"><summary>Размяна между групи</summary>
+  <form method="post" action="/e/{{.EventID}}/teams/exchange" class="inline">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>последните <input type="number" name="n" value="2" min="1" class="num"></label>
+    <label>от <select name="upper">{{range $d.Groups}}<option value="{{.Name}}">{{.Label}}</option>{{end}}</select></label>
+    <label>⇄ първите от <select name="lower">{{range $i, $g := $d.Groups}}<option value="{{$g.Name}}"{{if eq $i 1}} selected{{end}}>{{$g.Label}}</option>{{end}}</select></label>
+    <label>отиващите носят {{template "carry" (dict "Name" "carry" "Pct" "pct")}}</label>
+    <button>Размени</button>
+  </form>
+  <p class="muted small">Останалите отбори запазват точките си.</p>
+  </details>
+  {{end}}
+  {{else}}<p class="muted small">Групите се променят между рундовете: когато всички мачове са въведени.</p>{{end}}
+</section>
+{{end}}
 {{range $rv := $d.Rounds}}
 <section class="card" id="r{{$rv.Round}}">
   <h2>Рунд {{$rv.Round}} <span class="muted small">раздавания {{$rv.FirstBoard}}–{{with index $rv.Matches 0}}{{sub (add $rv.FirstBoard .Boards) 1}}{{end}}</span></h2>
   <table class="tbl">
-    <thead><tr><th>Маса</th><th>Домакин (СЮ в откр. зала)</th><th>Гост</th><th>Въведени</th><th class="num">IMP</th><th class="num">VP</th></tr></thead>
+    <thead><tr><th>Маса</th><th>Домакин (СЮ в откр. зала)</th><th>Гост</th><th>Въведени</th><th class="num">IMP</th><th class="num">VP / победител</th></tr></thead>
     <tbody>
     {{range $m := $rv.Matches}}
-    {{if $m.Bye}}<tr><td>–</td><td><b>{{$m.HomeName}}</b></td><td class="muted">почива</td><td></td><td></td><td class="num">{{num $m.VPHome}}</td></tr>
+    {{if $m.Bye}}<tr><td>–</td><td><b>{{$m.HomeName}}</b>{{with $m.GroupLabel}} <span class="badge">{{.}}</span>{{end}}</td><td class="muted">почива</td><td></td><td></td><td class="num">{{if $m.Knockout}}продължава{{else}}{{num $m.VPHome}}{{end}}</td></tr>
     {{else}}<tr>
       <td><a href="/e/{{$.EventID}}/r/{{$m.Round}}/m/{{$m.Home}}">{{$m.Table}}</a></td>
-      <td><a href="/e/{{$.EventID}}/r/{{$m.Round}}/m/{{$m.Home}}"><b>{{$m.HomeName}}</b></a></td><td><b>{{$m.AwayName}}</b></td>
+      <td><a href="/e/{{$.EventID}}/r/{{$m.Round}}/m/{{$m.Home}}"><b>{{$m.HomeName}}</b></a>{{with $m.GroupLabel}} <span class="badge">{{.}}</span>{{end}}</td><td><b>{{$m.AwayName}}</b></td>
       <td>{{if $m.Played}}<span class="badge good">{{$m.Entered}}/{{$m.Boards}}</span>{{else}}<span class="badge">{{$m.Entered}}/{{$m.Boards}}</span>{{end}}</td>
       <td class="num">{{if $m.Played}}{{num $m.IMPsHome}} : {{num $m.IMPsAway}}{{end}}</td>
-      <td class="num">{{if $m.Played}}<b>{{num $m.VPHome}} : {{num $m.VPAway}}</b>{{end}}</td>
+      <td class="num">{{if $m.Knockout}}{{if $m.Tied}}<span class="share">равенство: доп. раздавания</span>{{else if $m.Played}}<b>{{$m.Winner}}</b> <span class="muted small">{{num $m.TotalHome}} : {{num $m.TotalAway}}</span>{{end}}{{else if $m.Played}}<b>{{num $m.VPHome}} : {{num $m.VPAway}}</b>{{end}}</td>
     </tr>{{end}}
     {{end}}
     </tbody>
@@ -77,3 +121,4 @@
 </section>
 {{end}}
 {{end}}
+{{define "carry"}}<select name="{{.Name}}"><option value="all">всичко</option><option value="head-to-head">от срещите помежду им</option><option value="none">нищо</option></select> <input name="{{.Pct}}" class="res" placeholder="100" title="процент от пренесеното">%{{end}}

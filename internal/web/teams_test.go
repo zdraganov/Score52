@@ -80,3 +80,135 @@ func TestTeamsSwiss(t *testing.T) {
 		t.Errorf("usebio:\n%s", xml)
 	}
 }
+
+// teamsClient starts a teams event of n teams, started with 2 boards a match.
+func teamsClient(t *testing.T, n int, format string) (*client, string, func()) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	_, ev := c.post("/events", url.Values{"title": {"Отборно"}, "date": {"2026-12-05"}, "kind": {"teams"}})
+	for i := 1; i <= n; i++ {
+		v := url.Values{"name": {fmt.Sprint("Т", i)}}
+		for k := 1; k <= 4; k++ {
+			v.Set(fmt.Sprint("p", k), fmt.Sprintf("И %d-%d", i, k))
+		}
+		c.post(ev+"/teams", v)
+	}
+	c.post(ev+"/teams/start", url.Values{"format": {format}, "boards": {"2"}, "bye_vp": {"12"}})
+	return c, ev, func() { ts.Close(); s.Close() }
+}
+
+// playRound pairs a round and plays every match in it: the home team wins 10 IMPs on board 1, except
+// the matches listed in tie, all passed (0:0).
+func playRound(c *client, ev string, form url.Values, tie map[int]bool) []string {
+	c.t.Helper()
+	page, _ := c.post(ev+"/teams/pair", form)
+	round := regexp.MustCompile(`id="r(\d+)"`).FindAllStringSubmatch(page, -1)
+	r := round[len(round)-1][1]
+	var links []string
+	seen := map[string]bool{}
+	for _, m := range regexp.MustCompile(`href="(/e/[\w-]+/r/`+r+`/m/\d+)"`).FindAllStringSubmatch(page, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			links = append(links, m[1])
+		}
+	}
+	for i, l := range links {
+		v := url.Values{"oc0": {"4S"}, "od0": {"N"}, "or0": {"="}, "cc0": {"4S"}, "cd0": {"S"}, "cr0": {"-1"}}
+		if tie[i] {
+			v = url.Values{"oc0": {"PASS"}, "cc0": {"PASS"}}
+		}
+		page, _ := c.get(l)
+		for b := 1; b < len(regexp.MustCompile(`name="oc\d+"`).FindAllString(page, -1)); b++ {
+			v.Set(fmt.Sprint("oc", b), "PASS")
+			v.Set(fmt.Sprint("cc", b), "PASS")
+		}
+		c.post(l, v)
+	}
+	return links
+}
+
+func TestTeamsGroupsAndKnockout(t *testing.T) {
+	c, ev, done := teamsClient(t, 8, "swiss")
+	defer done()
+	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"1"}}, nil)
+	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"3"}}, nil)
+	page, _ := c.get(ev)
+	if !strings.Contains(page, "Разделяне на групи") {
+		t.Fatal("no split after round 2")
+	}
+	// A: the top 4 knockout; B: the rest, Swiss, carrying half their VPs
+	c.post(ev+"/teams/split", url.Values{"from": {""}, "name1": {"A"}, "count1": {"4"}, "format1": {"knockout"}, "carry1": {"none"},
+		"name2": {"B"}, "format2": {"swiss"}, "carry2": {"all"}, "pct2": {"50"}})
+	st, _ := c.get(ev + "/standings")
+	if !strings.Contains(st, "Група A") || !strings.Contains(st, "Група B") || !strings.Contains(st, "Пренесено") {
+		t.Fatal("standings don't show the groups")
+	}
+	// semis: A plays 4 boards; its first match ends level
+	links := playRound(c, ev, url.Values{"boards": {"2"}, "boards0": {"4"}, "first": {"5"}}, map[int]bool{0: true})
+	semi := links[0]
+	page, _ = c.get(semi)
+	if !strings.Contains(page, "Директна елиминация") || !strings.Contains(page, "Допълнителни раздавания") || strings.Count(page, `name="oc`) != 4 {
+		t.Fatal("the tied semi-final doesn't offer extra boards (or doesn't play 4 boards)")
+	}
+	if p, _ := c.get(ev); strings.Contains(p, "Чифтосай рунд 4") {
+		t.Fatal("paired past a tie")
+	}
+	// carry-over 0:2 would decide it, but the director rules it 0:0 and the teams play 2 extra boards: away +3
+	c.post(semi+"/carry", url.Values{"carry_home": {"0"}, "carry_away": {"0"}})
+	page, _ = c.post(semi+"/playoff", url.Values{"boards": {"2"}, "imps_home": {"0"}, "imps_away": {"3"}})
+	if !strings.Contains(page, "Победител") {
+		t.Fatal("the extra boards didn't decide the match")
+	}
+	// the final in A, round 4 of B
+	playRound(c, ev, url.Values{"boards": {"2"}, "boards0": {"4"}, "first": {"9"}}, nil) // final and B
+	page, _ = c.get(ev)
+	if !strings.Contains(page, "Чифтосай рунд 5") {
+		t.Fatal("can't pair after the final")
+	}
+	links = playRound(c, ev, url.Values{"boards": {"2"}, "first": {"11"}}, nil)
+	for _, l := range links {
+		mp, _ := c.get(l)
+		if strings.Contains(mp, "Директна елиминация") {
+			t.Error("the finished knockout was paired again")
+		}
+	}
+	st, _ = c.get(ev + "/standings")
+	if !strings.Contains(st, "отпадна в рунд 4") || !strings.Contains(st, "в играта") {
+		t.Errorf("knockout ranking:\n%s", st)
+	}
+	xml, _ := c.get(ev + "/teams/usebio.xml")
+	if !strings.Contains(xml, "<GROUP>A</GROUP>") && !strings.Contains(xml, `GROUP="A"`) {
+		t.Errorf("no groups in the file:\n%s", xml[:min(len(xml), 1500)])
+	}
+}
+
+func TestTeamsExchange(t *testing.T) {
+	c, ev, done := teamsClient(t, 8, "swiss")
+	defer done()
+	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"1"}}, nil)
+	c.post(ev+"/teams/split", url.Values{"from": {""}, "name1": {"A"}, "count1": {"4"}, "format1": {"round-robin"}, "carry1": {"all"},
+		"name2": {"B"}, "format2": {"round-robin"}, "carry2": {"all"}})
+	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"3"}}, nil)
+	before, _ := c.get(ev + "/standings")
+	page, _ := c.post(ev+"/teams/exchange", url.Values{"n": {"1"}, "upper": {"A"}, "lower": {"B"}, "carry": {"none"}})
+	if !strings.Contains(page, "Група A") {
+		t.Fatal("exchange failed")
+	}
+	after, _ := c.get(ev + "/standings")
+	if before == after {
+		t.Error("the exchange changed nothing")
+	}
+	// the movers start from 0 in their new groups: a 0 VP row in each group
+	if strings.Count(after, `<td class="num"><b>0</b></td>`) < 2 {
+		t.Errorf("movers with no carry:\n%s", after)
+	}
+	// a bad split is an error page, not a crash
+	r, _ := c.http.PostForm(c.base+ev+"/teams/split", url.Values{"t": {c.token}, "from": {"A"}, "name1": {"A"}, "name2": {"A"}})
+	if r.StatusCode != http.StatusBadRequest {
+		t.Errorf("a split into two groups called A: %d", r.StatusCode)
+	}
+}

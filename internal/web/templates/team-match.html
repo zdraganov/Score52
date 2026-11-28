@@ -3,7 +3,38 @@
 <h1>Рунд {{$d.Round}}, маса {{$d.Table}}: {{$d.HomeName}} – {{$d.AwayName}}</h1>
 <p class="actions"><a class="button secondary" href="/e/{{.EventID}}#r{{$d.Round}}">Рундът</a>
   <span class="big">{{num $d.IMPsHome}} : {{num $d.IMPsAway}} IMP</span>
-  {{if $d.Complete}}<span class="big">{{num $d.VPHome}} : {{num $d.VPAway}} VP</span>{{else}}<span class="muted">VP – когато всички раздавания са въведени</span>{{end}}</p>
+  {{if $d.Match.Knockout}}{{if $d.View.Winner}}<span class="big">Победител: {{$d.View.Winner}}</span>{{else if $d.Match.Tied}}<span class="alert inline">Равенство: допълнителни раздавания</span>{{end}}
+  {{else if $d.Complete}}<span class="big">{{num $d.VPHome}} : {{num $d.VPAway}} VP</span>{{else}}<span class="muted">VP – когато всички раздавания са въведени</span>{{end}}</p>
+{{if $d.Match.Knockout}}
+<section class="card">
+  <h2>Директна елиминация</h2>
+  <table class="tbl">
+    <thead><tr><th></th><th class="num">{{$d.HomeName}}</th><th class="num">{{$d.AwayName}}</th></tr></thead>
+    <tbody>
+      <tr><td>Пренесено</td><td class="num">{{num $d.Match.CarryHome}}</td><td class="num">{{num $d.Match.CarryAway}}</td></tr>
+      <tr><td>Мачът ({{$d.Match.Boards}} раздавания)</td><td class="num">{{num $d.Match.IMPsHome}}</td><td class="num">{{num $d.Match.IMPsAway}}</td></tr>
+      {{if $d.Match.PlayoffBoards}}<tr><td>Допълнителни ({{$d.Match.PlayoffBoards}} раздавания)</td><td class="num">{{num $d.Match.PlayoffHome}}</td><td class="num">{{num $d.Match.PlayoffAway}}</td></tr>{{end}}
+    </tbody>
+    <tfoot><tr><th>Общо</th><th class="num">{{num $d.View.TotalHome}}</th><th class="num">{{num $d.View.TotalAway}}</th></tr></tfoot>
+  </table>
+  <form method="post" action="/e/{{.EventID}}/r/{{$d.Round}}/m/{{$d.Match.Home}}/carry" class="inline">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Пренесено IMP: {{$d.HomeName}} <input name="carry_home" value="{{num $d.Match.CarryHome}}" class="res"></label>
+    <label>{{$d.AwayName}} <input name="carry_away" value="{{num $d.Match.CarryAway}}" class="res"></label>
+    <button class="secondary">Запиши пренесеното</button>
+  </form>
+  {{if $d.Match.Tied}}
+  <form method="post" action="/e/{{.EventID}}/r/{{$d.Round}}/m/{{$d.Match.Home}}/playoff" class="inline" style="margin-top:12px">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Допълнителни раздавания <input type="number" name="boards" value="2" min="1" max="8" class="num"></label>
+    <label>IMP {{$d.HomeName}} <input name="imps_home" class="res" required></label>
+    <label>IMP {{$d.AwayName}} <input name="imps_away" class="res" required></label>
+    <button>Запиши</button>
+  </form>
+  <p class="muted small">При ново равенство се играят още.</p>
+  {{end}}
+</section>
+{{end}}
 <form method="post" class="card scroll">
 <input type="hidden" name="t" value="{{.Token}}">
 <table class="tbl trav">

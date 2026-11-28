@@ -2,17 +2,30 @@
 {{$d := .Data}}
 <h1>Класиране <span class="muted small">{{.Event}}</span></h1>
 <p class="actions"><a class="button secondary" href="/e/{{.EventID}}">Рундовете</a> <a class="button secondary" href="/e/{{.EventID}}/teams/usebio.xml">Файл за bridge.bg</a></p>
+{{range $g := $d.Groups}}
 <section class="card scroll">
+{{if or (gt (len $d.Groups) 1) $g.Name}}<h2>{{$g.Label}} <span class="muted small">{{$g.Format}}</span></h2>{{end}}
+{{if $g.Knockout}}
 <table class="tbl rank">
-<thead><tr><th>#</th><th>Отбор</th>{{range $d.Rounds}}<th class="num">{{.}}</th>{{end}}<th class="num">Мачове</th><th class="num">IMP +</th><th class="num">IMP −</th><th class="num">VP</th></tr></thead>
+<thead><tr><th>#</th><th>Отбор</th><th>Докъде</th></tr></thead>
+<tbody>{{range $g.Rows}}<tr><td>{{.Rank}}{{if .Tied}}={{end}}</td><td><b>{{.Name}}</b><br><span class="muted small">{{.Players}}</span></td>
+  <td>{{if .Out}}отпадна в рунд {{.Out}}{{else}}в играта{{end}}</td></tr>{{end}}</tbody>
+</table>
+{{else}}
+<table class="tbl rank">
+<thead><tr><th>#</th><th>Отбор</th><th class="num">Пренесено</th>{{range $d.Rounds}}<th class="num">{{.}}</th>{{end}}<th class="num">Мачове</th><th class="num">IMP +</th><th class="num">IMP −</th><th class="num">VP</th></tr></thead>
 <tbody>
-{{range $d.Rows}}<tr>
+{{range $g.Rows}}<tr>
   <td>{{.Rank}}{{if .Tied}}={{end}}</td>
   <td><b>{{.Name}}</b><br><span class="muted small">{{.Players}}</span></td>
+  <td class="num">{{if .Carry}}{{num .Carry}}{{end}}</td>
   {{range .PerRound}}<td class="num">{{if .}}{{num (deref .)}}{{end}}</td>{{end}}
   <td class="num">{{.Played}}</td><td class="num">{{num .IMPsFor}}</td><td class="num">{{num .IMPsAgain}}</td><td class="num"><b>{{num .VP}}</b></td>
 </tr>{{end}}
 </tbody>
 </table>
+<p class="muted small">Кръговете показват всички VP на отбора; в групата се броят пренесеното и VP след влизането му в нея.</p>
+{{end}}
 </section>
+{{end}}
 {{end}}
