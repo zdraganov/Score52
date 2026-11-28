@@ -79,13 +79,15 @@ func (s *Store) tx(f func(*sql.Tx) error) error {
 
 // Event-wide settings live in meta under these keys (and any others the UI needs).
 const (
-	MetaKind      = "kind" // pairs, teams
-	MetaTitle     = "title"
-	MetaDate      = "date" // YYYY-MM-DD
-	MetaBridgeBG  = "bridgebg_tournament"
-	MetaPairsPlan = "pairs_plan"   // JSON: stages, finals, carry-over
-	MetaCopies    = "board_copies" // copies of each board set the club has (1: one set, as dealt at the tables)
-	MetaDeal      = "deal"         // JSON: the pairs expected, the boards wanted, and what was dealt for them
+	MetaKind       = "kind" // pairs, teams
+	MetaTitle      = "title"
+	MetaDate       = "date" // YYYY-MM-DD
+	MetaBridgeBG   = "bridgebg_tournament"
+	MetaPairsPlan  = "pairs_plan"   // JSON: stages, finals, carry-over
+	MetaCopies     = "board_copies" // copies of each board set the club has (1: one set, as dealt at the tables)
+	MetaDeal       = "deal"         // JSON: the pairs expected, the boards wanted, and what was dealt for them
+	MetaTeamsSetup = "teams_setup"  // JSON: format, boards per match, bye VPs
+	MetaTeamRounds = "team_rounds"  // JSON: each round's first board
 )
 
 func (s *Store) SetMeta(key, value string) error {
@@ -411,4 +413,69 @@ func (s *Store) LoadTeams() (*teams.Event, error) {
 		return nil, nil
 	}
 	return teams.Replay(log)
+}
+
+// --- team match boards ---
+
+// Rooms of a team match: the open room seats the home team NS, the closed room the away team NS. Adj is
+// an adjusted score for the board, in IMPs to each team, instead of the two rooms.
+const (
+	RoomOpen   = "open"
+	RoomClosed = "closed"
+	RoomAdj    = "adj"
+)
+
+type TeamBoard struct {
+	Round, Home, Away int // entry ids
+	Room              string
+	Board             int
+	Contract          string
+	Declarer, Lead    string
+	Tricks, Score     int // Score: NS
+	AdjHome, AdjAway  *float64
+	Source            string
+	UpdatedAt         string
+}
+
+// PutTeamBoard enters or corrects a board of a team match; a correction leaves the old one in the history.
+func (s *Store) PutTeamBoard(b TeamBoard) error {
+	if b.Source == "" {
+		b.Source = "manual"
+	}
+	_, err := s.db.Exec(`INSERT INTO team_boards (round, home, away, room, board, contract, declarer, lead, tricks, score, adj_home, adj_away, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (round, home, away, room, board) DO UPDATE SET contract = excluded.contract, declarer = excluded.declarer,
+			lead = excluded.lead, tricks = excluded.tricks, score = excluded.score, adj_home = excluded.adj_home,
+			adj_away = excluded.adj_away, source = excluded.source, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE contract IS NOT excluded.contract OR declarer IS NOT excluded.declarer OR lead IS NOT excluded.lead
+			OR tricks IS NOT excluded.tricks OR score IS NOT excluded.score OR adj_home IS NOT excluded.adj_home
+			OR adj_away IS NOT excluded.adj_away`,
+		b.Round, b.Home, b.Away, b.Room, b.Board, b.Contract, b.Declarer, b.Lead, b.Tricks, b.Score, b.AdjHome, b.AdjAway, b.Source)
+	return err
+}
+
+func (s *Store) DeleteTeamBoard(round, home, away int, room string, board int) error {
+	_, err := s.db.Exec(`DELETE FROM team_boards WHERE round = ? AND home = ? AND away = ? AND room = ? AND board = ?`, round, home, away, room, board)
+	return err
+}
+
+// TeamBoards are the boards entered for the event's matches, by round, match, board and room; round 0
+// gives every round's.
+func (s *Store) TeamBoards(round int) ([]TeamBoard, error) {
+	rows, err := s.db.Query(`SELECT round, home, away, room, board, contract, declarer, lead, tricks, score, adj_home, adj_away, source, updated_at
+		FROM team_boards WHERE ? = 0 OR round = ? ORDER BY round, home, away, board, room`, round, round)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TeamBoard
+	for rows.Next() {
+		var b TeamBoard
+		if err := rows.Scan(&b.Round, &b.Home, &b.Away, &b.Room, &b.Board, &b.Contract, &b.Declarer, &b.Lead, &b.Tricks, &b.Score,
+			&b.AdjHome, &b.AdjAway, &b.Source, &b.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }

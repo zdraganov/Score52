@@ -1,0 +1,38 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Рунд {{$d.Round}}, маса {{$d.Table}}: {{$d.HomeName}} – {{$d.AwayName}}</h1>
+<p class="actions"><a class="button secondary" href="/e/{{.EventID}}#r{{$d.Round}}">Рундът</a>
+  <span class="big">{{num $d.IMPsHome}} : {{num $d.IMPsAway}} IMP</span>
+  {{if $d.Complete}}<span class="big">{{num $d.VPHome}} : {{num $d.VPAway}} VP</span>{{else}}<span class="muted">VP – когато всички раздавания са въведени</span>{{end}}</p>
+<form method="post" class="card scroll">
+<input type="hidden" name="t" value="{{.Token}}">
+<table class="tbl trav">
+<thead>
+<tr><th rowspan="2">Разд.</th><th colspan="4">Открита зала: СЮ {{$d.HomeName}}</th><th colspan="4">Затворена зала: СЮ {{$d.AwayName}}</th><th colspan="2" class="num">IMP</th><th colspan="2">или присъдено IMP</th></tr>
+<tr><th>Договор</th><th>Разигр.</th><th>Резултат</th><th class="num">СЮ</th><th>Договор</th><th>Разигр.</th><th>Резултат</th><th class="num">СЮ</th>
+  <th class="num" title="{{$d.HomeName}}">Дом.</th><th class="num" title="{{$d.AwayName}}">Гост</th><th>Дом.</th><th>Гост</th></tr>
+</thead>
+<tbody>
+{{range $i, $r := $d.Rows}}
+<tr{{if or $r.Err $r.Open.Err $r.Closed.Err}} class="bad"{{end}}>
+  <td title="дава {{$r.Dealer}}, в зона: {{$r.Vul}}"><b>{{$r.Board}}</b> <span class="muted small">{{$r.Dealer}} · {{$r.Vul}}</span></td>
+  {{range $room := "o c" | fields}}{{$e := $r.Open}}{{if eq $room "c"}}{{$e = $r.Closed}}{{end}}
+  <td><input name="{{$room}}c{{$i}}" value="{{$e.Contract}}" placeholder="4S" class="contract" autocomplete="off"{{if and (eq $i 0) (eq $room "o")}} autofocus{{end}}></td>
+  <td><select name="{{$room}}d{{$i}}"><option></option>{{range $x := "N E S W" | fields}}<option{{if eq $x $e.Declarer}} selected{{end}}>{{$x}}</option>{{end}}</select></td>
+  <td><input name="{{$room}}r{{$i}}" value="{{$e.Result}}" placeholder="=" class="res" autocomplete="off"></td>
+  <td class="num">{{with $e.Score}}{{signed .}}{{end}}</td>
+  {{end}}
+  <td class="num">{{with $r.IMPHome}}{{if gt (deref .) 0.0}}<b>{{num (deref .)}}</b>{{end}}{{end}}</td>
+  <td class="num">{{with $r.IMPAway}}{{if gt (deref .) 0.0}}<b>{{num (deref .)}}</b>{{end}}{{end}}</td>
+  <td><input name="ah{{$i}}" value="{{$r.AdjHome}}" class="res" autocomplete="off"></td>
+  <td><input name="aa{{$i}}" value="{{$r.AdjAway}}" class="res" autocomplete="off"></td>
+</tr>
+{{range $x := (list $r.Open.Err $r.Closed.Err $r.Err)}}{{if $x}}<tr class="bad"><td colspan="13">⚠ раздаване {{$r.Board}}: {{$x}}</td></tr>{{end}}{{end}}
+{{end}}
+</tbody>
+<tfoot><tr><th colspan="9">Общо</th><th class="num">{{num $d.IMPsHome}}</th><th class="num">{{num $d.IMPsAway}}</th><th colspan="2"></th></tr></tfoot>
+</table>
+<p class="muted small">Договор: 4S, 3NTX, 6HXX, PASS. Резултат: =, +1, -2. Празен ред трие резултата. Присъденото (IMP за всеки отбор) заменя двете зали за раздаването.</p>
+<p class="actions"><button>Запиши</button></p>
+</form>
+{{end}}

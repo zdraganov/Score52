@@ -1,0 +1,79 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{.Event}} <span class="muted small">{{$d.Date}} · по отбори</span></h1>
+<div class="grid2">
+<section class="card" id="teams">
+  <h2>Отбори <span class="badge">{{len $d.Entries}}</span></h2>
+  {{with $d.Entries}}
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Отбор</th><th>Играчи</th><th></th></tr></thead>
+    <tbody>
+    {{range $i, $e := .}}<tr>
+      <td>{{inc $i}}</td><td><b>{{$e.Name}}</b></td>
+      <td class="muted small">{{range $k, $p := $e.Players}}{{if $k}}, {{end}}{{$p.Name}}{{if $p.FederationID}} ({{$p.FederationID}}){{end}}{{end}}</td>
+      <td>{{if not $d.Started}}<form method="post" action="/e/{{$.EventID}}/teams/{{$e.ID}}/delete"><input type="hidden" name="t" value="{{$.Token}}"><button class="link danger" title="Изтрий">×</button></form>{{end}}</td>
+    </tr>{{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="muted">Добавете отборите. Редът, в който са въведени, е поставянето им (1 = най-силният): по него се чифтосва първият рунд.</p>{{end}}
+  {{if not $d.Started}}
+  <form method="post" action="/e/{{.EventID}}/teams" class="teamform">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <input name="name" placeholder="Име на отбора" required autofocus class="teamname">
+    {{range $k := "1 2 3 4 5 6" | fields}}
+    <input name="p{{$k}}" placeholder="Играч {{$k}}"{{if le $k "4"}} required{{end}}>
+    <input name="ibn{{$k}}" placeholder="Ф. номер" class="ibn">
+    {{end}}
+    <button>Добави</button>
+  </form>
+  <p class="muted small">Поне 4 играчи, до 6.</p>
+  {{end}}
+</section>
+<section class="card">
+  {{if not $d.Started}}
+  <h2>Започване</h2>
+  <form method="post" action="/e/{{.EventID}}/teams/start" class="stack">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Система <select name="format">
+      {{range $f := "swiss danish round-robin" | fields}}<option value="{{$f}}"{{if eq $f (printf "%s" $d.Setup.Format)}} selected{{end}}>{{index $d.Formats $f}}</option>{{end}}
+    </select></label>
+    <label>Раздавания на мач <input type="number" name="boards" value="{{$d.Setup.Boards}}" min="1" max="64" class="num"></label>
+    <label>VP за почиващ отбор <input name="bye_vp" value="{{num $d.Setup.ByeVP}}" class="num"></label>
+    <p class="muted small">Точки по скалата на WBF (20 VP). След започване отборите не се променят.</p>
+    {{if ge (len $d.Entries) 3}}<button>Започни</button>{{else}}<p class="muted">Трябват поне 3 отбора.</p>{{end}}
+  </form>
+  {{else}}
+  <h2>{{$d.Format}}</h2>
+  {{if $d.Rounds}}<p class="actions"><a class="button" href="/e/{{.EventID}}/standings">Класиране</a> <a class="button secondary" href="/e/{{.EventID}}/teams/usebio.xml">Файл за bridge.bg</a></p>{{end}}
+  {{if $d.CanPair}}
+  <form method="post" action="/e/{{.EventID}}/teams/pair" class="inline">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Раздавания <input type="number" name="boards" value="{{$d.Setup.Boards}}" min="1" max="64" class="num"></label>
+    <label>от раздаване <input type="number" name="first" value="{{$d.NextFirst}}" min="1" max="128" class="num"></label>
+    <button>Чифтосай рунд {{$d.NextRound}}</button>
+  </form>
+  {{else}}<p class="muted">Следващият рунд се чифтосва, когато всички мачове на този са въведени.</p>{{end}}
+  {{end}}
+</section>
+</div>
+{{range $rv := $d.Rounds}}
+<section class="card" id="r{{$rv.Round}}">
+  <h2>Рунд {{$rv.Round}} <span class="muted small">раздавания {{$rv.FirstBoard}}–{{with index $rv.Matches 0}}{{sub (add $rv.FirstBoard .Boards) 1}}{{end}}</span></h2>
+  <table class="tbl">
+    <thead><tr><th>Маса</th><th>Домакин (СЮ в откр. зала)</th><th>Гост</th><th>Въведени</th><th class="num">IMP</th><th class="num">VP</th></tr></thead>
+    <tbody>
+    {{range $m := $rv.Matches}}
+    {{if $m.Bye}}<tr><td>–</td><td><b>{{$m.HomeName}}</b></td><td class="muted">почива</td><td></td><td></td><td class="num">{{num $m.VPHome}}</td></tr>
+    {{else}}<tr>
+      <td><a href="/e/{{$.EventID}}/r/{{$m.Round}}/m/{{$m.Home}}">{{$m.Table}}</a></td>
+      <td><a href="/e/{{$.EventID}}/r/{{$m.Round}}/m/{{$m.Home}}"><b>{{$m.HomeName}}</b></a></td><td><b>{{$m.AwayName}}</b></td>
+      <td>{{if $m.Played}}<span class="badge good">{{$m.Entered}}/{{$m.Boards}}</span>{{else}}<span class="badge">{{$m.Entered}}/{{$m.Boards}}</span>{{end}}</td>
+      <td class="num">{{if $m.Played}}{{num $m.IMPsHome}} : {{num $m.IMPsAway}}{{end}}</td>
+      <td class="num">{{if $m.Played}}<b>{{num $m.VPHome}} : {{num $m.VPAway}}</b>{{end}}</td>
+    </tr>{{end}}
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+{{end}}

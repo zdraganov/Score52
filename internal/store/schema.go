@@ -100,4 +100,51 @@ CREATE TABLE team_ops (
 -- a session belongs to the qualifying ('') or to a final ('A', 'B'...)
 ALTER TABLE sessions ADD COLUMN stage TEXT NOT NULL DEFAULT '';
 `,
+	`
+-- a team match's boards: the open room (home NS), the closed room (away NS), or an adjusted
+-- score in IMPs for the board ('adj', instead of the two rooms)
+CREATE TABLE team_boards (
+	round      INTEGER NOT NULL,
+	home       INTEGER NOT NULL,                -- entry ids
+	away       INTEGER NOT NULL,
+	room       TEXT NOT NULL,                   -- open, closed, adj
+	board      INTEGER NOT NULL,
+	contract   TEXT NOT NULL DEFAULT '',
+	declarer   TEXT NOT NULL DEFAULT '',
+	lead       TEXT NOT NULL DEFAULT '',
+	tricks     INTEGER NOT NULL DEFAULT 0,
+	score      INTEGER NOT NULL DEFAULT 0,      -- NS
+	adj_home   REAL,                            -- 'adj': IMPs to each team
+	adj_away   REAL,
+	source     TEXT NOT NULL DEFAULT 'manual',
+	updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	PRIMARY KEY (round, home, away, room, board)
+);
+
+CREATE TABLE team_board_history (
+	id     INTEGER PRIMARY KEY,
+	round  INTEGER NOT NULL,
+	home   INTEGER NOT NULL,
+	away   INTEGER NOT NULL,
+	room   TEXT NOT NULL,
+	board  INTEGER NOT NULL,
+	action TEXT NOT NULL,
+	old    TEXT NOT NULL,
+	at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TRIGGER team_boards_update AFTER UPDATE ON team_boards BEGIN
+	INSERT INTO team_board_history (round, home, away, room, board, action, old)
+	VALUES (OLD.round, OLD.home, OLD.away, OLD.room, OLD.board, 'update', json_object(
+		'contract', OLD.contract, 'declarer', OLD.declarer, 'lead', OLD.lead, 'tricks', OLD.tricks, 'score', OLD.score,
+		'adj_home', OLD.adj_home, 'adj_away', OLD.adj_away, 'source', OLD.source, 'updated_at', OLD.updated_at));
+END;
+
+CREATE TRIGGER team_boards_delete AFTER DELETE ON team_boards BEGIN
+	INSERT INTO team_board_history (round, home, away, room, board, action, old)
+	VALUES (OLD.round, OLD.home, OLD.away, OLD.room, OLD.board, 'delete', json_object(
+		'contract', OLD.contract, 'declarer', OLD.declarer, 'lead', OLD.lead, 'tricks', OLD.tricks, 'score', OLD.score,
+		'adj_home', OLD.adj_home, 'adj_away', OLD.adj_away, 'source', OLD.source, 'updated_at', OLD.updated_at));
+END;
+`,
 }

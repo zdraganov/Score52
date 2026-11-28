@@ -98,6 +98,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /e/{id}/deal", s.saveDeal)
 	mux.HandleFunc("POST /e/{id}/finals", s.planFinals)
 	mux.HandleFunc("GET /e/{id}/stage/{stage}/usebio.xml", s.stageUsebio)
+	mux.HandleFunc("POST /e/{id}/teams", s.addTeam)
+	mux.HandleFunc("POST /e/{id}/teams/{tid}/delete", s.deleteTeam)
+	mux.HandleFunc("POST /e/{id}/teams/start", s.startTeams)
+	mux.HandleFunc("POST /e/{id}/teams/pair", s.pairTeams)
+	mux.HandleFunc("GET /e/{id}/r/{round}/m/{home}", s.teamMatch)
+	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}", s.saveTeamMatch)
+	mux.HandleFunc("GET /e/{id}/teams/usebio.xml", s.teamsUsebio)
 	return s.guard(mux)
 }
 
@@ -168,8 +175,8 @@ func (s *Server) open(id string) (*store.Store, error) {
 // --- events ---
 
 type eventInfo struct {
-	ID, Title, Date string
-	Entries         int
+	ID, Title, Date, Kind string
+	Entries               int
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +191,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		title, _ := st.Meta(store.MetaTitle)
 		date, _ := st.Meta(store.MetaDate)
 		entries, _ := st.Entries()
-		events = append(events, eventInfo{ID: id, Title: title, Date: date, Entries: len(entries)})
+		events = append(events, eventInfo{ID: id, Title: title, Date: date, Kind: eventKind(st), Entries: len(entries)})
 	}
 	sort.Slice(events, func(i, j int) bool { return events[i].ID > events[j].ID })
 	s.render(w, "home", page{Title: "Състезания", Data: map[string]any{
@@ -196,6 +203,14 @@ func (s *Server) createEvent(w http.ResponseWriter, r *http.Request) {
 	date := r.PostFormValue("date")
 	if title == "" {
 		s.fail(w, http.StatusBadRequest, errors.New("състезанието няма име"))
+		return
+	}
+	kind := r.PostFormValue("kind")
+	if kind == "" {
+		kind = kindPairs
+	}
+	if kind != kindPairs && kind != kindTeams {
+		s.fail(w, http.StatusBadRequest, errors.New("състезанието е по двойки или по отбори"))
 		return
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
@@ -215,7 +230,7 @@ func (s *Server) createEvent(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusInternalServerError, err)
 		return
 	}
-	for k, v := range map[string]string{store.MetaTitle: title, store.MetaDate: date, store.MetaKind: "pairs"} {
+	for k, v := range map[string]string{store.MetaTitle: title, store.MetaDate: date, store.MetaKind: kind} {
 		if err := st.SetMeta(k, v); err != nil {
 			st.Close()
 			s.fail(w, http.StatusInternalServerError, err)
@@ -243,6 +258,10 @@ func (s *Server) eventPage(w http.ResponseWriter, r *http.Request) (*store.Store
 func (s *Server) event(w http.ResponseWriter, r *http.Request) {
 	st, p, ok := s.eventPage(w, r)
 	if !ok {
+		return
+	}
+	if eventKind(st) == kindTeams {
+		s.teamsEvent(w, st, p)
 		return
 	}
 	entries, err := st.Entries()
@@ -347,6 +366,8 @@ var funcs = template.FuncMap{
 	"deref":  func(v *float64) float64 { return *v },
 	"mul":    func(a, b int) int { return a * b },
 	"sub":    func(a, b int) int { return a - b },
+	"add":    func(a, b int) int { return a + b },
+	"list":   func(v ...string) []string { return v },
 	"pct100": func(v float64) string { return strconv.FormatFloat(math.Round(10000*v)/100, 'f', -1, 64) },
 	"rest":   func(v float64) float64 { return 1 - v },
 	"dict": func(kv ...any) map[string]any {

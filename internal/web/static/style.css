@@ -54,3 +54,7 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
 .red { color: var(--red); } .ct { white-space: nowrap; }
 .weight { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--accent); }
 .next { font-size: 12px; color: var(--accent); } .share { font-size: 12px; color: var(--warn-ink); }
+.teamform { display: grid; grid-template-columns: 1fr 110px 1fr 110px; gap: 8px; margin-top: 14px; }
+.teamform .teamname { grid-column: 1 / -1; } .teamform button { grid-column: 1 / -1; justify-self: start; }
+.tbl tfoot th { border-top: 2px solid var(--line); color: var(--ink); }
+.tbl a { color: var(--accent); }
