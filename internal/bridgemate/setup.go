@@ -5,6 +5,8 @@ package bridgemate
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -75,6 +77,14 @@ type Setup struct {
 	Tables   []TableRow
 	Rounds   []RoundRow
 	Players  []PlayerRow
+	Names    []NameRow // PlayerNames: the numbers BCS looks names up by
+}
+
+// NameRow is a row of PlayerNames: a federation number (ID when it is a number) and its name.
+type NameRow struct {
+	ID    int
+	StrID string // ≤18
+	Name  string // ≤18
 }
 
 // Player is a name to show on the Bridgemates.
@@ -100,61 +110,120 @@ type PairsSection struct {
 func PairsSetup(name string, date time.Time, sections ...PairsSection) (Setup, error) {
 	s := Setup{Session: SessionRow{ID: 1, Name: clip(name, 40), Date: date}}
 	for i, ps := range sections {
-		id := i + 1
 		m := ps.Movement
 		if err := m.Validate(); err != nil {
 			return Setup{}, fmt.Errorf("section %s: %w", ps.Letter, err)
 		}
-		first := ps.FirstBoard
-		if first == 0 {
-			first = 1
+		whole := movement.SectionInfo{Letter: ps.Letter, FirstTable: 1, Tables: m.Tables, FirstPair: 1, Pairs: m.Pairs}
+		s.addSection(i+1, m, whole, ps.BoardsPerRound, ps.FirstBoard, ps.Scoring, ps.Players)
+	}
+	return s, s.Check()
+}
+
+// SessionSetup lays out a Score52 session as it is stored: one movement, maybe played in sections
+// (movement.Combine). Section k is BCS section k+1, its tables and pairs numbered from 1 as the
+// players see them ("B3" is table 3 of section B); players are keyed by the movement's pair number.
+func SessionSetup(name string, date time.Time, m movement.Movement, bpr, first int, method pairs.Method, players map[int][2]Player) (Setup, error) {
+	s := Setup{Session: SessionRow{ID: 1, Name: clip(name, 40), Date: date}}
+	if err := m.Validate(); err != nil {
+		return Setup{}, err
+	}
+	for k, x := range SessionSections(m) {
+		s.addSection(k+1, m, x, bpr, first, method, players)
+	}
+	return s, s.Check()
+}
+
+// SessionSections are the parts of a movement BCS sees as sections: its own sections, or all of it as A.
+func SessionSections(m movement.Movement) []movement.SectionInfo {
+	if len(m.Sections) > 0 {
+		return m.Sections
+	}
+	return []movement.SectionInfo{{Letter: "A", FirstTable: 1, Tables: m.Tables, FirstPair: 1, Pairs: m.Pairs, Kind: m.Kind}}
+}
+
+// addSection writes the tables x covers of movement m as section id, renumbered from 1.
+func (s *Setup) addSection(id int, m movement.Movement, x movement.SectionInfo, bpr, first int, method pairs.Method, players map[int][2]Player) {
+	if first == 0 {
+		first = 1
+	}
+	local := func(p int) int {
+		if p == 0 {
+			return 0
 		}
-		winners := 1
-		if m.TwoFields {
-			winners = 2
+		return p - x.FirstPair + 1
+	}
+	missing := 0
+	for _, ph := range append([]int{m.Phantom}, m.Phantoms...) {
+		if ph != 0 && ph >= x.FirstPair && ph < x.FirstPair+x.Pairs {
+			missing = local(ph)
 		}
-		s.Sections = append(s.Sections, SectionRow{ID: id, Letter: ps.Letter, Tables: m.Tables, MissingPair: m.Phantom,
-			Session: 1, Scoring: ScoringFor(ps.Scoring), Winners: winners})
-		seat := map[[2]int]movement.Seat{}
-		for _, st := range m.Seats {
-			seat[[2]int{st.Table, st.Round}] = st
-		}
-		for t := 1; t <= m.Tables; t++ {
-			s.Tables = append(s.Tables, TableRow{Section: id, Table: t})
-			for r := 1; r <= m.Rounds; r++ {
-				st, ok := seat[[2]int{t, r}]
-				row := RoundRow{Section: id, Table: t, Round: r}
-				if ok { // a table the movement leaves empty keeps all zeros
-					row.NS, row.EW = st.NS, st.EW
-					row.LowBoard = first + (st.Set-1)*ps.BoardsPerRound
-					row.HighBoard = row.LowBoard + ps.BoardsPerRound - 1
-				}
-				s.Rounds = append(s.Rounds, row)
+	}
+	winners := 1
+	if m.TwoFields {
+		winners = 2
+	}
+	s.Sections = append(s.Sections, SectionRow{ID: id, Letter: x.Letter, Tables: x.Tables, MissingPair: missing,
+		Session: 1, Scoring: ScoringFor(method), Winners: winners})
+	seat := map[[2]int]movement.Seat{}
+	for _, st := range m.Seats {
+		seat[[2]int{st.Table, st.Round}] = st
+	}
+	for t := 1; t <= x.Tables; t++ {
+		s.Tables = append(s.Tables, TableRow{Section: id, Table: t})
+		for r := 1; r <= m.Rounds; r++ {
+			st, ok := seat[[2]int{x.FirstTable + t - 1, r}]
+			row := RoundRow{Section: id, Table: t, Round: r}
+			if ok { // a table the movement leaves empty keeps all zeros
+				row.NS, row.EW = local(st.NS), local(st.EW)
+				row.LowBoard = first + (st.Set-1)*bpr
+				row.HighBoard = row.LowBoard + bpr - 1
 			}
+			s.Rounds = append(s.Rounds, row)
 		}
-		// names at the pairs' first-round tables (round 0 = before play)
-		for _, st := range m.Seats {
-			if st.Round != 1 {
+	}
+	// names at the pairs' first-round tables (round 0 = before play)
+	for _, st := range m.Seats {
+		if st.Round != 1 || st.Table < x.FirstTable || st.Table >= x.FirstTable+x.Tables {
+			continue
+		}
+		for _, side := range []struct {
+			pair int
+			dirs [2]string
+		}{{st.NS, [2]string{"N", "S"}}, {st.EW, [2]string{"E", "W"}}} {
+			pl, ok := players[side.pair]
+			if !ok || m.IsPhantom(side.pair) {
 				continue
 			}
-			for _, side := range []struct {
-				pair int
-				dirs [2]string
-			}{{st.NS, [2]string{"N", "S"}}, {st.EW, [2]string{"E", "W"}}} {
-				pl, ok := ps.Players[side.pair]
-				if !ok || m.IsPhantom(side.pair) {
+			for k, p := range pl {
+				if p.Number == "" && p.Name == "" {
 					continue
 				}
-				for k, p := range pl {
-					if p.Number == "" && p.Name == "" {
-						continue
-					}
-					s.Players = append(s.Players, PlayerRow{Section: id, Table: st.Table, Direction: side.dirs[k], Number: p.Number, Name: clip(p.Name, 18)})
-				}
+				s.Players = append(s.Players, PlayerRow{Section: id, Table: st.Table - x.FirstTable + 1, Direction: side.dirs[k], Number: p.Number, Name: clip(p.Name, 18)})
 			}
 		}
 	}
-	return s, s.Check()
+}
+
+// AddNames puts players into PlayerNames, so a Bridgemate shows the name of whoever enters their
+// federation number at any table. Players without a number are left out; a number appears once.
+func (s *Setup) AddNames(players ...Player) {
+	seen := map[string]bool{}
+	for _, n := range s.Names {
+		seen[n.StrID] = true
+	}
+	for _, p := range players {
+		id := strings.TrimSpace(p.Number)
+		if id == "" || p.Name == "" || seen[id] || utf8.RuneCountInString(id) > 18 {
+			continue
+		}
+		seen[id] = true
+		n := NameRow{StrID: id, Name: clip(p.Name, 18)}
+		if v, err := strconv.Atoi(id); err == nil && v > 0 {
+			n.ID = v
+		}
+		s.Names = append(s.Names, n)
+	}
 }
 
 // Check holds the setup to the Bridgemate II/III limits.

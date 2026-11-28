@@ -158,7 +158,10 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   section A, closed = B, match = table), BCS is started on it from the round, and "Вземи резултатите"
   brings the results into the matches (see docs/bridgemate.md). `score52.exe -bws-template` names
   Bridgemate's template (default: next to the program), `-bcs` the BCS program.
-- Next: BAM; BridgeMate for pairs sessions from the pages.
+- **BridgeMate for pairs sessions** (Windows): the session page writes the session's `.bws` (its
+  sections as BCS sections, names at the first-round tables, every player's number in `PlayerNames`),
+  starts BCS and brings the results into the travellers.
+- Next: BAM; our own empty `.bws` instead of Bridgemate's template.
 
 An event is a log of matches plus the current groups. Standings are always worked out from the log,
 so a corrected score reranks everything after it.

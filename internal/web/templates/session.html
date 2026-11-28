@@ -7,6 +7,21 @@
   <span class="muted">Въведени: {{.Data.Done}} от {{len $s.Boards}} раздавания</span>
 </p>
 <section class="card">
+<h2>BridgeMate</h2>
+{{with .Data.BMNote}}<p class="alert">{{.}}</p>{{end}}
+{{if .Data.Bridgemate}}
+<div class="actions">
+  <form method="post" action="/e/{{.EventID}}/s/{{$s.Slot}}/bridgemate" class="inline">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <button class="secondary">{{if .Data.HasBws}}Обнови{{else}}Създай{{end}} файла за BridgeMate</button>
+    <label><input type="checkbox" name="start" value="1" checked> и пусни BCS</label>
+  </form>
+  {{if .Data.HasBws}}<form method="post" action="/e/{{.EventID}}/s/{{$s.Slot}}/bridgemate/results"><input type="hidden" name="t" value="{{.Token}}"><button>Вземи резултатите от BridgeMate</button></form>{{end}}
+</div>
+<p class="muted small">Сесията е един файл{{with $s.Movement.Sections}}, секциите ѝ са секции и в BCS{{end}}. На апаратите са имената от първия рунд; всеки играч от състезанието, който въведе федералния си номер, вижда името си. Преди друга сесия затворете BCS.</p>
+{{else}}<p class="muted small">Само под Windows, с инсталиран Bridgemate Control Software.</p>{{end}}
+</section>
+<section class="card">
 <h2>Раздавания</h2>
 <div class="boards">
 {{range $s.Boards}}{{$in := index $s.Entered .}}{{$want := index $s.Expected .}}
