@@ -116,16 +116,22 @@ round 1. Each next round: write it and set `n + 256`. The last round: set plain 
 
 ## Team games
 
-- `Section.ScoringType` = 4.
-- A match is two tables, usually in two sections (A1 + B101, A2 + B102...), and both get the same
-  `Tables.Group` (1..78, unique per match). Grouping **cannot change between rounds within one file**:
-  when a round's matches use different table pairs, start a new `.bws` and restart BCS.
-- For a Swiss: `Session.PairsMoveAcrossField` = true if teams move between sections. If EW goes back to
-  its home table for the next assignment, also `Session.EWReturnHome` = true, NS and EW pair number =
-  the team number, `Section.Winners` = 2.
-- Plan, to verify in the VM: keep the table pairs fixed (A1+B101 is always match 1, so `Group` never
-  changes) and only change which teams sit there, by adding rounds to `RoundData` (`n + 256`). Team
-  number = pair number at both tables. If BCS doesn't accept that, fall back to one `.bws` per round.
+As Magic Contest lays them out (its teams `.bws`, dumped 2026-11-28), and as Score52 writes them:
+
+- **One `.bws` per round** (`<event>-r<round>.bws` next to the event file). Bridgemate cannot regroup tables
+  within a file, so the next round is a new file and BCS is restarted on it (close the old BCS first:
+  it runs as a single instance and a second start does nothing).
+- **Section A (ID 1) is the open room, section B (ID 2) the closed room**, one table per match in each;
+  match k is table k in both, `Tables.Group` = k. `ScoringType` = 4, `Winners` = 1, `RoundData.Round` = 1.
+- Pair numbers: Magic Contest uses placeholders (A: NS t, EW 200+t; B: NS 100+t, EW 300+t). Score52 writes
+  the teams' own numbers (their seeds): at A the home team NS and the away team EW, at B the other way
+  round, so the Bridgemates show the team numbers. Results are matched by section and table, not by
+  pair number.
+- No player names are preloaded: a team's line-up changes from round to round. Magic Contest sets
+  `Settings.BM2NumberEntryEachRound` so players enter their numbers every round.
+- Reading: section 1 → open room, 2 → closed room, table → match. A board the director entered or
+  corrected in Score52 is not overwritten; a result erased on a Bridgemate is removed. Adjusted,
+  "not played" and "arbitral" results are counted for the director, who enters them as IMPs.
 
 ## Checked in the VM (2026-11-27)
 
@@ -159,6 +165,13 @@ In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
   (it needs Magic Contest's `ReceivedData.custom_ProcessedMC` column, added for the test). `read`
   parsed all 30 rows through `ReadReceived` / `Current` and scored them. Smart App Control had to be
   turned off in the VM for the unsigned `.exe` to run.
+
+- **Teams, end to end (2026-11-28)**: `score52.exe` (windows/386) in the VM made a round's `.bws` from the
+  page, started BCS on it (`"BMPro.exe" /f:[path] /s /r`, written out as the raw command line: BCS
+  takes everything after `/f:[` up to the last character as the path, so a quoted argument leaves a `]`
+  in it), and BCS showed sections A and B with 3 tables each. `bws-round.vbs` (without Magic Contest's
+  `custom_ProcessedMC` column) added 24 results while BCS had the file open; the page read them through
+  the Access driver and recorded the three matches with IMPs and VPs.
 
 ## Still open
 

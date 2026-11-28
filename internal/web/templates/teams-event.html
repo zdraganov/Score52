@@ -103,6 +103,20 @@
 {{range $rv := $d.Rounds}}
 <section class="card" id="r{{$rv.Round}}">
   <h2>Рунд {{$rv.Round}} <span class="muted small">раздавания {{$rv.FirstBoard}}–{{with index $rv.Matches 0}}{{sub (add $rv.FirstBoard .Boards) 1}}{{end}}</span></h2>
+  {{if eq $rv.Round $d.CurrentRound}}
+  {{with $d.BMNote}}<p class="alert">{{.}}</p>{{end}}
+  {{if $d.Bridgemate}}
+  <div class="actions">
+    <form method="post" action="/e/{{$.EventID}}/r/{{$rv.Round}}/bridgemate" class="inline">
+      <input type="hidden" name="t" value="{{$.Token}}">
+      <button class="secondary">{{if $d.HasBws}}Обнови{{else}}Създай{{end}} файла за BridgeMate</button>
+      <label><input type="checkbox" name="start" value="1" checked> и пусни BCS</label>
+    </form>
+    {{if $d.HasBws}}<form method="post" action="/e/{{$.EventID}}/r/{{$rv.Round}}/bridgemate/results"><input type="hidden" name="t" value="{{$.Token}}"><button>Вземи резултатите от BridgeMate</button></form>{{end}}
+  </div>
+  <p class="muted small">Всеки рунд е отделен файл: откритата зала е секция A, затворената – B, масата е номерът на мача. Преди нов рунд затворете BCS. Номерата на отборите на апаратите са поставянето им (1, 2…).</p>
+  {{else}}<p class="muted small">BridgeMate: само под Windows, с инсталиран Bridgemate Control Software.</p>{{end}}
+  {{end}}
   <table class="tbl">
     <thead><tr><th>Маса</th><th>Домакин (СЮ в откр. зала)</th><th>Гост</th><th>Въведени</th><th class="num">IMP</th><th class="num">VP / победител</th></tr></thead>
     <tbody>

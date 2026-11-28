@@ -98,7 +98,7 @@ type roundView struct {
 	Matches    []matchView
 }
 
-func (s *Server) teamsEvent(w http.ResponseWriter, st *store.Store, p page) {
+func (s *Server) teamsEvent(w http.ResponseWriter, r *http.Request, st *store.Store, p page) {
 	entries, err := st.Entries()
 	if err != nil {
 		s.fail(w, http.StatusInternalServerError, err)
@@ -130,6 +130,19 @@ func (s *Server) teamsEvent(w http.ResponseWriter, st *store.Store, p page) {
 		data["CanPair"] = allPlayed(ev)
 		data["Format"] = formatNames[setup.Format]
 		data["Groups"] = groupViews(ev)
+		data["Bridgemate"] = s.bws != nil
+		data["CurrentRound"] = ev.Round
+		data["HasBws"] = ev.Round > 0 && s.bws != nil && fileExists(s.roundBws(p.EventID, ev.Round))
+		q := r.URL.Query()
+		switch q.Get("bm") {
+		case "file":
+			data["BMNote"] = "Файлът за BridgeMate е готов: " + s.roundBws(p.EventID, ev.Round)
+		case "started":
+			data["BMNote"] = "BCS е пуснат на файла на рунда."
+		case "read":
+			data["BMNote"] = fmt.Sprintf("От BridgeMate: %s резултата взети; %s поправени тук остават както са; %s чакат съдията (присъдени, неизиграни или нечетими).",
+				q.Get("taken"), q.Get("kept"), q.Get("pending"))
+		}
 		data["CanChange"] = allPlayed(ev) && ev.Round > 0
 	}
 	p.Title = p.Event
@@ -475,6 +488,17 @@ func (md *matchData) total() {
 	}
 }
 
+// recordMatch puts a complete match into the event (again, when a correction changed it).
+func recordMatch(st *store.Store, ev *teams.Event, md *matchData) error {
+	if !md.Complete || md.Match.Played && md.Match.IMPsHome == md.IMPsHome && md.Match.IMPsAway == md.IMPsAway {
+		return nil
+	}
+	if err := ev.Record(md.Round, md.Match.Home, md.Match.Away, md.IMPsHome, md.IMPsAway); err != nil {
+		return err
+	}
+	return st.SaveTeams(ev)
+}
+
 func (s *Server) teamMatch(w http.ResponseWriter, r *http.Request) {
 	_, p, _, md, ok := s.loadMatch(w, r)
 	if !ok {
@@ -556,16 +580,9 @@ func (s *Server) saveTeamMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	md.fill(md.Rows[0].Board, boards)
-	// a complete match goes into the event (again, when a correction changes it)
-	if md.Complete && (!md.Match.Played || md.Match.IMPsHome != md.IMPsHome || md.Match.IMPsAway != md.IMPsAway) {
-		if err := ev.Record(md.Round, md.Match.Home, md.Match.Away, md.IMPsHome, md.IMPsAway); err != nil {
-			s.fail(w, http.StatusBadRequest, err)
-			return
-		}
-		if err := st.SaveTeams(ev); err != nil {
-			s.fail(w, http.StatusInternalServerError, err)
-			return
-		}
+	if err := recordMatch(st, ev, md); err != nil {
+		s.fail(w, http.StatusBadRequest, err)
+		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/e/%s/r/%d/m/%d", p.EventID, md.Round, md.Match.Home), http.StatusSeeOther)
 }
