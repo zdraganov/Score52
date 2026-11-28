@@ -122,15 +122,30 @@ As Magic Contest lays them out (its teams `.bws`, dumped 2026-11-28), and as Sco
   within a file, so the next round is a new file and BCS is restarted on it (close the old BCS first:
   it runs as a single instance and a second start does nothing).
 - **Section A (ID 1) is the open room, section B (ID 2) the closed room**, one table per match in each;
-  match k is table k in both, `Tables.Group` = k. `ScoringType` = 4, `Winners` = 1, `RoundData.Round` = 1.
+  match k is table k in both, `Tables.Group` = k. `ScoringType` = 4, `Winners` = 1.
+- **Round N's file has rounds 1..N** in `RoundData`, the earlier ones all zeros, so the Bridgemates show
+  the real round (and `ReceivedData.Round` is it).
+- **Boards are the table's business.** At the BBF's events the boards dealt for a round (e.g. 32) are
+  shared out between the tables in sets (8 each), open and closed room of a match playing the same set,
+  and the set has nothing to do with the match's number. Every table gets `LowBoard` 1 and `HighBoard`
+  32 (or the boards per match, if more), and `Settings.BM2FirstBoardManually` = 1: the players key in
+  their first board. Score52 takes each match's boards as they come and compares the rooms board by
+  board; the director can renumber a board on the match page.
+- **`Settings`**: one row per section with the values Magic Contest wrote at a BBF event (2026-11-28,
+  `bridgemate.TeamsSettings`): first board manually, no member numbers, player names shown, lead card,
+  score recap, no results or ranking on the Bridgemates. The template's `Settings` is empty and its
+  yes/no columns are NOT NULL, so a row needs all its columns, not just the ones we care about.
 - Pair numbers: Magic Contest uses placeholders (A: NS t, EW 200+t; B: NS 100+t, EW 300+t). Score52 writes
   the teams' own numbers (their seeds): at A the home team NS and the away team EW, at B the other way
   round, so the Bridgemates show the team numbers. Results are matched by section and table, not by
   pair number.
-- No names at the tables: a team's line-up changes from round to round. Magic Contest sets
-  `Settings.BM2NumberEntryEachRound` so players enter their numbers every round. Score52 fills
-  `PlayerNames` with every player of the event who has a federation number, so the entered number
-  shows the player's name.
+- Names at the tables: each team's name on its seats (Magic Contest's own `PlayerNumbers.Name` is
+  encrypted, `mcenc:...`, with the team in `custom_` columns). Players don't enter numbers
+  (`MemberNumbers` = 0); `PlayerNames` still gets every player with a federation number, for a TD who
+  turns number entry on.
+- From a live event (22 teams, 4 rounds of 8 boards, 2026-11-28): Score52's reader took each round's
+  180-184 rows to 176 results (11 matches × 2 rooms × 8 boards), re-entries and "Result erased" rows
+  resolved, no unreadable rows. Some rows carry the remark `x`; it changes nothing.
 - Reading: section 1 → open room, 2 → closed room, table → match. A board the director entered or
   corrected in Score52 is not overwritten; a result erased on a Bridgemate is removed. Adjusted,
   "not played" and "arbitral" results are counted for the director, who enters them as IMPs.
@@ -193,6 +208,10 @@ In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
   in it), and BCS showed sections A and B with 3 tables each. `bws-round.vbs` (without Magic Contest's
   `custom_ProcessedMC` column) added 24 results while BCS had the file open; the page read them through
   the Access driver and recorded the three matches with IMPs and VPs.
+
+- **Teams on the table's boards (2026-11-28)**: a round with 3 matches written by `score52.exe`; the
+  Access driver took the `Settings` rows (first board manually on), BCS opened the file. 24 results
+  on boards 9-12, 25-28 and 1-4 (match 1, 2, 3) came back as three complete matches.
 
 ## Still open
 

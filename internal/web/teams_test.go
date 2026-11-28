@@ -38,7 +38,7 @@ func TestTeamsSwiss(t *testing.T) {
 	if !strings.Contains(page, "Чифтосай рунд 1") {
 		t.Fatal("no pairing after the start")
 	}
-	page, _ = c.post(ev+"/teams/pair", url.Values{"boards": {"2"}, "first": {"1"}})
+	page, _ = c.post(ev+"/teams/pair", url.Values{"boards": {"2"}})
 	links := regexp.MustCompile(`href="(/e/[\w-]+/r/1/m/\d+)"`).FindAllStringSubmatch(page, -1)
 	if len(links) != 4 || !strings.Contains(page, "почива") { // two matches, two links each, one bye
 		t.Fatalf("round 1: %d match links", len(links))
@@ -134,8 +134,8 @@ func playRound(c *client, ev string, form url.Values, tie map[int]bool) []string
 func TestTeamsGroupsAndKnockout(t *testing.T) {
 	c, ev, done := teamsClient(t, 8, "swiss")
 	defer done()
-	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"1"}}, nil)
-	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"3"}}, nil)
+	playRound(c, ev, url.Values{"boards": {"2"}}, nil)
+	playRound(c, ev, url.Values{"boards": {"2"}}, nil)
 	page, _ := c.get(ev)
 	if !strings.Contains(page, "Разделяне на групи") {
 		t.Fatal("no split after round 2")
@@ -148,7 +148,7 @@ func TestTeamsGroupsAndKnockout(t *testing.T) {
 		t.Fatal("standings don't show the groups")
 	}
 	// semis: A plays 4 boards; its first match ends level
-	links := playRound(c, ev, url.Values{"boards": {"2"}, "boards0": {"4"}, "first": {"5"}}, map[int]bool{0: true})
+	links := playRound(c, ev, url.Values{"boards": {"2"}, "boards0": {"4"}}, map[int]bool{0: true})
 	semi := links[0]
 	page, _ = c.get(semi)
 	if !strings.Contains(page, "Директна елиминация") || !strings.Contains(page, "Допълнителни раздавания") || strings.Count(page, `name="oc`) != 4 {
@@ -164,12 +164,12 @@ func TestTeamsGroupsAndKnockout(t *testing.T) {
 		t.Fatal("the extra boards didn't decide the match")
 	}
 	// the final in A, round 4 of B
-	playRound(c, ev, url.Values{"boards": {"2"}, "boards0": {"4"}, "first": {"9"}}, nil) // final and B
+	playRound(c, ev, url.Values{"boards": {"2"}, "boards0": {"4"}}, nil) // final and B
 	page, _ = c.get(ev)
 	if !strings.Contains(page, "Чифтосай рунд 5") {
 		t.Fatal("can't pair after the final")
 	}
-	links = playRound(c, ev, url.Values{"boards": {"2"}, "first": {"11"}}, nil)
+	links = playRound(c, ev, url.Values{"boards": {"2"}}, nil)
 	for _, l := range links {
 		mp, _ := c.get(l)
 		if strings.Contains(mp, "Директна елиминация") {
@@ -189,10 +189,10 @@ func TestTeamsGroupsAndKnockout(t *testing.T) {
 func TestTeamsExchange(t *testing.T) {
 	c, ev, done := teamsClient(t, 8, "swiss")
 	defer done()
-	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"1"}}, nil)
+	playRound(c, ev, url.Values{"boards": {"2"}}, nil)
 	c.post(ev+"/teams/split", url.Values{"from": {""}, "name1": {"A"}, "count1": {"4"}, "format1": {"round-robin"}, "carry1": {"all"},
 		"name2": {"B"}, "format2": {"round-robin"}, "carry2": {"all"}})
-	playRound(c, ev, url.Values{"boards": {"2"}, "first": {"3"}}, nil)
+	playRound(c, ev, url.Values{"boards": {"2"}}, nil)
 	before, _ := c.get(ev + "/standings")
 	page, _ := c.post(ev+"/teams/exchange", url.Values{"n": {"1"}, "upper": {"A"}, "lower": {"B"}, "carry": {"none"}})
 	if !strings.Contains(page, "Група A") {
@@ -210,5 +210,38 @@ func TestTeamsExchange(t *testing.T) {
 	r, _ := c.http.PostForm(c.base+ev+"/teams/split", url.Values{"t": {c.token}, "from": {"A"}, "name1": {"A"}, "name2": {"A"}})
 	if r.StatusCode != http.StatusBadRequest {
 		t.Errorf("a split into two groups called A: %d", r.StatusCode)
+	}
+}
+
+// Matches play whatever boards their table got: the director types the numbers (or BridgeMate brings
+// them), a renumbered board moves with its results, and both rooms are compared board by board.
+func TestTeamsBoardNumbers(t *testing.T) {
+	c, ev, done := teamsClient(t, 4, "swiss")
+	defer done()
+	page, _ := c.post(ev+"/teams/pair", url.Values{"boards": {"2"}})
+	if !strings.Contains(page, "2 раздавания на мач") {
+		t.Error("the round doesn't say how many boards a match plays")
+	}
+	m1 := regexp.MustCompile(`href="(/e/[\w-]+/r/1/m/\d+)"`).FindStringSubmatch(page)[1]
+	mp, _ := c.get(m1)
+	if !strings.Contains(mp, `name="b0" value="1"`) || !strings.Contains(mp, `name="b1" value="2"`) {
+		t.Fatal("an empty match isn't numbered 1, 2")
+	}
+	// the table played boards 17 and 18: board 17 (none vul) 4S= +420 against 4S-1 -50, 10 IMPs
+	mp, _ = c.post(m1, url.Values{"b0": {"17"}, "oc0": {"4S"}, "od0": {"N"}, "or0": {"="}, "cc0": {"4S"}, "cd0": {"S"}, "cr0": {"-1"},
+		"b1": {"18"}, "oc1": {"PASS"}, "cc1": {"PASS"}})
+	if !strings.Contains(mp, `name="b0" value="17"`) || !strings.Contains(mp, "10 : 0 IMP") || !strings.Contains(mp, " VP") {
+		t.Fatalf("boards 17-18: %s", mp[strings.Index(mp, "<h1>"):strings.Index(mp, "<form")])
+	}
+	// 18 was really 25: the board moves, the match stays complete
+	mp, _ = c.post(m1, url.Values{"b0": {"17"}, "oc0": {"4S"}, "od0": {"N"}, "or0": {"="}, "cc0": {"4S"}, "cd0": {"S"}, "cr0": {"-1"},
+		"b1": {"25"}, "oc1": {"PASS"}, "cc1": {"PASS"}})
+	if !strings.Contains(mp, `name="b1" value="25"`) || strings.Contains(mp, `value="18"`) || !strings.Contains(mp, " VP") {
+		t.Error("board 18 wasn't renumbered 25")
+	}
+	// the same number twice is refused
+	mp, _ = c.post(m1, url.Values{"b0": {"17"}, "b1": {"17"}})
+	if !strings.Contains(mp, "раздаване 17 е два пъти") {
+		t.Error("two rows with board 17")
 	}
 }

@@ -87,7 +87,6 @@ const (
 	MetaCopies     = "board_copies" // copies of each board set the club has (1: one set, as dealt at the tables)
 	MetaDeal       = "deal"         // JSON: the pairs expected, the boards wanted, and what was dealt for them
 	MetaTeamsSetup = "teams_setup"  // JSON: format, boards per match, bye VPs
-	MetaTeamRounds = "team_rounds"  // JSON: each round's first board
 )
 
 func (s *Store) SetMeta(key, value string) error {

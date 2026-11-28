@@ -78,6 +78,13 @@ type Setup struct {
 	Rounds   []RoundRow
 	Players  []PlayerRow
 	Names    []NameRow // PlayerNames: the numbers BCS looks names up by
+	Settings []Setting // a Settings row for each section; none: BCS's own settings
+}
+
+// Setting is one column of a Settings row.
+type Setting struct {
+	Column string
+	Value  any
 }
 
 // NameRow is a row of PlayerNames: a federation number (ID when it is a number) and its name.

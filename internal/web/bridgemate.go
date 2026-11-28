@@ -81,13 +81,16 @@ func (s *Server) bwsRound(w http.ResponseWriter, r *http.Request) {
 	}
 	var ms []bridgemate.TeamMatch
 	for _, m := range rv.Matches {
-		if !m.Bye() {
-			ms = append(ms, bridgemate.TeamMatch{Table: m.Table, Home: ev.Teams[m.Home].Seed, Away: ev.Teams[m.Away].Seed, Boards: m.Boards})
+		if !m.Bye() { // each team's name on its seats in both rooms
+			h, a := bridgemate.Player{Name: m.HomeName}, bridgemate.Player{Name: m.AwayName}
+			ms = append(ms, bridgemate.TeamMatch{Table: m.Table, Home: ev.Teams[m.Home].Seed, Away: ev.Teams[m.Away].Seed,
+				Open: [4]bridgemate.Player{h, h, a, a}, Closed: [4]bridgemate.Player{a, a, h, h}})
 		}
 	}
 	date, _ := st.Meta(store.MetaDate)
 	d, _ := time.Parse("2006-01-02", date)
-	setup, err := bridgemate.TeamsSetup(fmt.Sprintf("%s – рунд %d", p.Event, rv.Round), d, rv.FirstBoard, ms)
+	// the tables key in their first board: any of 1..32 (more when a match plays more)
+	setup, err := bridgemate.TeamsSetup(fmt.Sprintf("%s – рунд %d", p.Event, rv.Round), d, rv.Round, max(32, rv.Boards), ms)
 	if err != nil {
 		s.fail(w, http.StatusBadRequest, fmt.Errorf("файлът за BridgeMate не става: %w", err))
 		return
@@ -140,8 +143,8 @@ func (s *Server) bwsResults(w http.ResponseWriter, r *http.Request) {
 	for _, b := range boards {
 		m, ok := byTable[b.Table]
 		room := rooms[b.Section]
-		if !ok || room == "" || b.Received.Board < rv.FirstBoard || b.Received.Board >= rv.FirstBoard+m.Boards {
-			pending++ // not a board of this round's matches
+		if !ok || room == "" || b.Received.Board < 1 {
+			pending++ // not a table of this round's matches
 			continue
 		}
 		k := key{int(m.Home), int(m.Away), room, b.Received.Board}
@@ -183,7 +186,7 @@ func (s *Server) bwsResults(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		md := &matchData{Round: rv.Round, Table: m.Table, View: m, Match: m.Match}
-		md.fill(rv.FirstBoard, all)
+		md.fill(all)
 		if err := recordMatch(st, ev, md); err != nil {
 			s.fail(w, http.StatusBadRequest, err)
 			return

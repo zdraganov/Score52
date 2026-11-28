@@ -44,7 +44,7 @@ func TestTeamsBridgemate(t *testing.T) {
 		c.post(ev+"/teams", v)
 	}
 	c.post(ev+"/teams/start", url.Values{"format": {"swiss"}, "boards": {"2"}, "bye_vp": {"12"}})
-	page, _ := c.post(ev+"/teams/pair", url.Values{"boards": {"2"}, "first": {"5"}})
+	page, _ := c.post(ev+"/teams/pair", url.Values{"boards": {"2"}})
 	if !strings.Contains(page, "Създай файла за BridgeMate") {
 		t.Fatal("no BridgeMate on the round")
 	}
@@ -55,7 +55,16 @@ func TestTeamsBridgemate(t *testing.T) {
 	}
 	db, _ := bwstest.Open(bws)
 	defer db.Close()
-	var sections, tables int
+	var sections, tables, manual int
+	db.QueryRow("SELECT count(*) FROM [Settings] WHERE [BM2FirstBoardManually]").Scan(&manual)
+	if manual != 2 {
+		t.Errorf("%d sections where the tables key in their first board", manual)
+	}
+	var low, high int
+	db.QueryRow("SELECT min([LowBoard]), max([HighBoard]) FROM [RoundData] WHERE [NSPair] > 0").Scan(&low, &high)
+	if low != 1 || high != 32 {
+		t.Errorf("tables get boards %d-%d, want 1-32", low, high)
+	}
 	db.QueryRow("SELECT count(*) FROM [Section] WHERE [ScoringType] = 4").Scan(&sections)
 	db.QueryRow("SELECT count(*) FROM [Tables]").Scan(&tables)
 	if sections != 2 || tables != 4 {
@@ -76,15 +85,19 @@ func TestTeamsBridgemate(t *testing.T) {
 	add(2, 1, 5, awayNo, homeNo, "S", "4 S", "-1", false)
 	add(1, 1, 6, homeNo, awayNo, "", "PASS", "", false)
 	add(2, 1, 6, awayNo, homeNo, "", "PASS", "", false)
-	// match 2, board 5 open only, then a result entered and erased
-	add(1, 2, 5, 0, 0, "E", "3 NT", "+1", false)
-	add(2, 2, 5, 0, 0, "E", "3 NT", "=", false)
-	add(2, 2, 5, 0, 0, "E", "3 NT", "=", true)
+	// match 2 plays other boards: 25 open only (the closed room entered it, then erased it)
+	add(1, 2, 25, 0, 0, "E", "3 NT", "+1", false)
+	add(2, 2, 25, 0, 0, "E", "3 NT", "=", false)
+	add(2, 2, 25, 0, 0, "E", "3 NT", "=", true)
 	page, _ = c.post(ev+"/r/1/bridgemate/results", url.Values{})
 	if !strings.Contains(page, "5 резултата взети") {
 		t.Fatalf("results: %s", regexp.MustCompile(`(?s)<p class="alert">.*?</p>`).FindString(page))
 	}
-	m1 := regexp.MustCompile(`href="(/e/[\w-]+/r/1/m/\d+)"`).FindStringSubmatch(page)[1]
+	ms := regexp.MustCompile(`href="(/e/[\w-]+/r/1/m/\d+)"`).FindAllStringSubmatch(page, -1)
+	m1 := ms[0][1]
+	if m2, _ := c.get(ms[len(ms)-1][1]); !strings.Contains(m2, `name="b0" value="25"`) {
+		t.Error("match 2's board 25 isn't on its page")
+	}
 	mp, _ := c.get(m1)
 	if !strings.Contains(mp, "12 : 0 IMP") || !strings.Contains(mp, " VP") {
 		t.Fatalf("match 1 from BridgeMate: %s", mp[strings.Index(mp, "<h1>"):strings.Index(mp, "<form")])
@@ -111,7 +124,7 @@ func TestTeamsBridgemate(t *testing.T) {
 func TestBridgemateNeedsWindows(t *testing.T) {
 	c, ev, done := teamsClient(t, 4, "swiss")
 	defer done()
-	page, _ := c.post(ev+"/teams/pair", url.Values{"boards": {"2"}, "first": {"1"}})
+	page, _ := c.post(ev+"/teams/pair", url.Values{"boards": {"2"}})
 	if !strings.Contains(page, "само под Windows") || strings.Contains(page, "Създай файла за BridgeMate") {
 		t.Error("BridgeMate offered without a host")
 	}
