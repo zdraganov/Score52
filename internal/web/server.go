@@ -39,6 +39,8 @@ type Server struct {
 	stores map[string]*store.Store
 
 	pages map[string]*template.Template
+
+	bws BwsHost // BridgeMate, on Windows; nil elsewhere
 }
 
 // New serves the events in dir (created if missing).
@@ -110,6 +112,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /e/{id}/teams/format", s.formatTeams)
 	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}/carry", s.koCarry)
 	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}/playoff", s.koPlayoff)
+	mux.HandleFunc("POST /e/{id}/r/{round}/bridgemate", s.bwsRound)
+	mux.HandleFunc("POST /e/{id}/r/{round}/bridgemate/results", s.bwsResults)
 	return s.guard(mux)
 }
 
@@ -266,7 +270,7 @@ func (s *Server) event(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if eventKind(st) == kindTeams {
-		s.teamsEvent(w, st, p)
+		s.teamsEvent(w, r, st, p)
 		return
 	}
 	entries, err := st.Entries()

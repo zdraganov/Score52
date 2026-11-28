@@ -11,29 +11,19 @@ import (
 	"github.com/zdraganov/Score52/internal/pairs"
 	"github.com/zdraganov/Score52/internal/score"
 
-	_ "modernc.org/sqlite"
+	"github.com/zdraganov/Score52/internal/bridgemate/bwstest"
 )
 
-// fakeBws is the template's tables as SQLite: the same names and [bracketed] SQL, so Write and
-// ReadReceived run unchanged. PlayerNumbers lacks EntrySource and Round, as the template does.
+// fakeBws is the template's tables as SQLite (bwstest), so Write and ReadReceived run unchanged.
 func fakeBws(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "x.bws"))
-	if err != nil {
+	path := filepath.Join(t.TempDir(), "x.bws")
+	if err := bwstest.Create(path); err != nil {
 		t.Fatal(err)
 	}
-	for _, q := range []string{
-		"CREATE TABLE [Clients] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [Computer] TEXT)",
-		"CREATE TABLE [Session] ([ID] INTEGER, [Name] TEXT, [Date] DATETIME, [Time] DATETIME, [GUID] TEXT, [Status] INTEGER, [ShowInApp] BOOLEAN, [PairsMoveAcrossField] BOOLEAN, [EWReturnHome] BOOLEAN)",
-		"CREATE TABLE [Section] ([ID] INTEGER, [Letter] TEXT, [Tables] INTEGER, [MissingPair] INTEGER, [EWMoveBeforePlay] INTEGER, [Session] INTEGER, [ScoringType] INTEGER, [Winners] INTEGER)",
-		"CREATE TABLE [Tables] ([Section] INTEGER, [Table] INTEGER, [ComputerID] INTEGER, [Status] INTEGER, [LogOnOff] INTEGER, [CurrentRound] INTEGER, [CurrentBoard] INTEGER, [UpdateFromRound] INTEGER, [Group] INTEGER)",
-		"CREATE TABLE [RoundData] ([Section] INTEGER, [Table] INTEGER, [Round] INTEGER, [NSPair] INTEGER, [EWPair] INTEGER, [LowBoard] INTEGER, [HighBoard] INTEGER, [CustomBoards] TEXT CHECK ([CustomBoards] IS NULL OR [CustomBoards] <> ''))",
-		"CREATE TABLE [PlayerNumbers] ([Section] INTEGER, [Table] INTEGER, [Direction] TEXT, [Number] TEXT, [Name] TEXT, [Updated] BOOLEAN, [TimeLog] DATETIME, [Processed] BOOLEAN)",
-		"CREATE TABLE [ReceivedData] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [Section] INTEGER, [Table] INTEGER, [Round] INTEGER, [Board] INTEGER, [PairNS] INTEGER, [PairEW] INTEGER, [Declarer] INTEGER, [NS/EW] TEXT, [Contract] TEXT, [Result] TEXT, [LeadCard] TEXT, [Remarks] TEXT, [DateLog] DATETIME, [TimeLog] DATETIME, [Processed] BOOLEAN, [Erased] BOOLEAN, [custom_ProcessedMC] BOOLEAN)",
-	} {
-		if _, err := db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
+	db, err := bwstest.Open(path)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return db
 }
@@ -190,5 +180,63 @@ func TestParseErrors(t *testing.T) {
 	b, err := Parse(Received{Board: 1, Contract: "4 S", Result: "=", Declarer: 2, PairNS: 1, PairEW: 2})
 	if err != nil || b.DeclarerNS || b.ScoreNS != -score.Score(score.Contract{Level: 4, Strain: score.Spades}, false, 10) {
 		t.Errorf("%+v %v", b, err)
+	}
+}
+
+// A teams round as Magic Contest lays it out: A open room, B closed room, Group = match; written,
+// then results of both rooms read back by section and table.
+func TestTeamsRound(t *testing.T) {
+	ms := []TeamMatch{
+		{Table: 1, Home: 3, Away: 5, Boards: 8, Open: [4]Player{{"101", "Иван Петров"}, {"102", "Петя"}, {"", "Гост 1"}, {"", "Гост 2"}}},
+		{Table: 2, Home: 1, Away: 4, Boards: 8},
+	}
+	s, err := TeamsSetup("Отборно, рунд 2", time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC), 9, ms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Sections) != 2 || s.Sections[0].Scoring != ScoringTeams || len(s.Tables) != 4 || len(s.Players) != 4 {
+		t.Fatalf("setup: %+v", s)
+	}
+	for _, r := range s.Rounds {
+		if r.Round != 1 || r.LowBoard != 9 || r.HighBoard != 16 {
+			t.Errorf("round row %+v", r)
+		}
+	}
+	// match 1: open room NS = home 3, closed room NS = away 5
+	if s.Rounds[0].NS != 3 || s.Rounds[0].EW != 5 || s.Rounds[1].Section != SectionClosed || s.Rounds[1].NS != 5 || s.Rounds[1].EW != 3 {
+		t.Errorf("rooms: %+v %+v", s.Rounds[0], s.Rounds[1])
+	}
+	db := fakeBws(t)
+	if err := Write(db, s, "PC"); err != nil {
+		t.Fatal(err)
+	}
+	var groups int
+	db.QueryRow("SELECT count(DISTINCT [Group]) FROM [Tables]").Scan(&groups)
+	if groups != 2 {
+		t.Errorf("%d groups", groups)
+	}
+	for _, q := range []string{
+		"INSERT INTO [ReceivedData] ([Section],[Table],[Round],[Board],[PairNS],[PairEW],[Declarer],[NS/EW],[Contract],[Result],[Erased]) VALUES (1,1,1,9,3,5,3,'N','4 S','=',0)",
+		"INSERT INTO [ReceivedData] ([Section],[Table],[Round],[Board],[PairNS],[PairEW],[Declarer],[NS/EW],[Contract],[Result],[Erased]) VALUES (2,1,1,9,5,3,5,'S','4 S','-1',0)",
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := ReadReceived(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boards, errs := Current(rows)
+	if len(errs) > 0 || len(boards) != 2 {
+		t.Fatalf("%d boards, errors %v", len(boards), errs)
+	}
+	// board 9 (EW vulnerable): open +420 for the home team NS, closed -50 for NS = the away team
+	got := map[int]int{}
+	for _, b := range boards {
+		got[b.Section] = b.ScoreNS
+	}
+	if got[SectionOpen] != 420 || got[SectionClosed] != -50 {
+		t.Errorf("scores %v", got)
 	}
 }

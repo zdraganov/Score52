@@ -154,7 +154,11 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
   entered as each team's IMPs, again while still level; the next round waits for it. A group with
   nothing left to play (K/O decided, round robin complete) sits out while the others go on. Standings
   are per group, a K/O group by how far each team got; the USEBIO file ranks group after group.
-- Next: BridgeMate for teams, BAM.
+- **BridgeMate for teams** (Windows): each round's matches go into a `.bws` of their own (open room =
+  section A, closed = B, match = table), BCS is started on it from the round, and "Вземи резултатите"
+  brings the results into the matches (see docs/bridgemate.md). `score52.exe -bws-template` names
+  Bridgemate's template (default: next to the program), `-bcs` the BCS program.
+- Next: BAM; BridgeMate for pairs sessions from the pages.
 
 An event is a log of matches plus the current groups. Standings are always worked out from the log,
 so a corrected score reranks everything after it.

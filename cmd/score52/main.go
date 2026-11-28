@@ -25,6 +25,10 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:47652", "where to serve the pages (keep it on 127.0.0.1)")
 	dir := flag.String("data", filepath.Join(home, "Documents", "Score52"), "folder with the event files")
 	noBrowser := flag.Bool("no-browser", false, "don't open the browser")
+	exe, _ := os.Executable()
+	template := flag.String("bws-template", filepath.Join(filepath.Dir(exe), "Template_Access2000.bws"),
+		"Bridgemate's empty database (Template_Access2000.bws), copied for each BridgeMate file (Windows)")
+	bcs := flag.String("bcs", `C:\Program Files (x86)\Bridgemate Pro\BMPro.exe`, "Bridgemate Control Software (Windows)")
 	flag.Parse()
 
 	srv, err := web.New(*dir)
@@ -32,6 +36,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer srv.Close()
+	if h := bridgemateHost(*template, *bcs); h != nil {
+		srv.SetBridgemate(h)
+	}
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
