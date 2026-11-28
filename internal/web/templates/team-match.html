@@ -46,7 +46,7 @@
 <tbody>
 {{range $i, $r := $d.Rows}}
 <tr{{if or $r.Err $r.Open.Err $r.Closed.Err}} class="bad"{{end}}>
-  <td title="дава {{$r.Dealer}}, в зона: {{$r.Vul}}"><b>{{$r.Board}}</b> <span class="muted small">{{$r.Dealer}} · {{$r.Vul}}</span></td>
+  <td title="дава {{$r.Dealer}}, в зона: {{$r.Vul}}"><input name="b{{$i}}" value="{{$r.Board}}" class="res" inputmode="numeric" autocomplete="off"> <span class="muted small">{{$r.Dealer}} · {{$r.Vul}}</span></td>
   {{range $room := "o c" | fields}}{{$e := $r.Open}}{{if eq $room "c"}}{{$e = $r.Closed}}{{end}}
   <td><input name="{{$room}}c{{$i}}" value="{{$e.Contract}}" placeholder="4S" class="contract" autocomplete="off"{{if and (eq $i 0) (eq $room "o")}} autofocus{{end}}></td>
   <td><select name="{{$room}}d{{$i}}"><option></option>{{range $x := "N E S W" | fields}}<option{{if eq $x $e.Declarer}} selected{{end}}>{{$x}}</option>{{end}}</select></td>
@@ -63,7 +63,7 @@
 </tbody>
 <tfoot><tr><th colspan="9">Общо</th><th class="num">{{num $d.IMPsHome}}</th><th class="num">{{num $d.IMPsAway}}</th><th colspan="2"></th></tr></tfoot>
 </table>
-<p class="muted small">Договор: 4S, 3NTX, 6HXX, PASS. Резултат: =, +1, -2. Празен ред трие резултата. Присъденото (IMP за всеки отбор) заменя двете зали за раздаването.</p>
+<p class="muted small">Раздаванията са тези, които масата е играла: сменете номера, ако е друг (зоната и даващият следват номера). Договор: 4S, 3NTX, 6HXX, PASS. Резултат: =, +1, -2. Празен ред трие резултата. Присъденото (IMP за всеки отбор) заменя двете зали за раздаването.</p>
 <p class="actions"><button>Запиши</button></p>
 </form>
 {{end}}

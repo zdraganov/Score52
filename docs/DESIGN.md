@@ -140,8 +140,10 @@ One SQLite file per event (`modernc.org/sqlite`, pure Go, so the `.exe` still bu
 
 - **Screens (first version: Swiss, Danish, round robin)**: an event is created "по отбори"; teams are a
   name and 4-6 players, seeded in the order entered. Start fixes the format, boards per match and the
-  bye's VPs (WBF 20-point scale). Each round is paired from the event page with its boards (count and
-  first board). A match is entered board by board, both rooms: the open room seats the home team NS,
+  bye's VPs (WBF 20-point scale). Each round is paired from the event page with its number of boards
+  per match; which boards a match plays is its table's business (tables play different boards out of
+  what was dealt, open and closed room of a table the same ones): the match page takes the board
+  numbers the table played, and BridgeMate brings them. A match is entered board by board, both rooms: the open room seats the home team NS,
   the closed room the away team; an adjusted score is IMPs to each team for the board. When every board
   is in, the match's IMPs go into the event log and give the VPs; a correction records it again. The
   boards are in `team_boards` with a history, as pairs results. Standings show each round's VPs; the

@@ -50,7 +50,6 @@
     <input type="hidden" name="t" value="{{.Token}}">
     <label>Раздавания <input type="number" name="boards" value="{{$d.Setup.Boards}}" min="1" max="64" class="num"></label>
     {{if gt (len $d.Groups) 1}}{{range $i, $g := $d.Groups}}<label>{{$g.Label}} <input type="number" name="boards{{$i}}" placeholder="{{$d.Setup.Boards}}" min="1" max="64" class="num" title="раздавания в {{$g.Label}}, ако са различни"></label>{{end}}{{end}}
-    <label>от раздаване <input type="number" name="first" value="{{$d.NextFirst}}" min="1" max="128" class="num"></label>
     <button>Чифтосай рунд {{$d.NextRound}}</button>
   </form>
   {{else}}<p class="muted">Следващият рунд се чифтосва, когато всички мачове на този са въведени (и равенствата на директните елиминации са решени).</p>{{end}}
@@ -102,7 +101,7 @@
 {{end}}
 {{range $rv := $d.Rounds}}
 <section class="card" id="r{{$rv.Round}}">
-  <h2>Рунд {{$rv.Round}} <span class="muted small">раздавания {{$rv.FirstBoard}}–{{with index $rv.Matches 0}}{{sub (add $rv.FirstBoard .Boards) 1}}{{end}}</span></h2>
+  <h2>Рунд {{$rv.Round}} <span class="muted small">{{$rv.Boards}} раздавания на мач</span></h2>
   {{if eq $rv.Round $d.CurrentRound}}
   {{with $d.BMNote}}<p class="alert">{{.}}</p>{{end}}
   {{if $d.Bridgemate}}
@@ -114,7 +113,7 @@
     </form>
     {{if $d.HasBws}}<form method="post" action="/e/{{$.EventID}}/r/{{$rv.Round}}/bridgemate/results"><input type="hidden" name="t" value="{{$.Token}}"><button>Вземи резултатите от BridgeMate</button></form>{{end}}
   </div>
-  <p class="muted small">Всеки рунд е отделен файл: откритата зала е секция A, затворената – B, масата е номерът на мача. Преди нов рунд затворете BCS. Номерата на отборите на апаратите са поставянето им (1, 2…).</p>
+  <p class="muted small">Всеки рунд е отделен файл: откритата зала е секция A, затворената – B, масата е номерът на мача. Масите въвеждат номера на първото си раздаване; откритата и затворената зала на една маса играят едни и същи. Преди нов рунд затворете BCS. Номерата на отборите на апаратите са поставянето им (1, 2…).</p>
   {{else}}<p class="muted small">BridgeMate: само под Windows, с инсталиран Bridgemate Control Software.</p>{{end}}
   {{end}}
   <table class="tbl">

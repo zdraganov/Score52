@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -42,15 +43,6 @@ func loadSetup(st *store.Store) teamsSetup {
 		json.Unmarshal([]byte(v), &ts)
 	}
 	return ts
-}
-
-// firstBoards are each round's first board (1 when not set).
-func firstBoards(st *store.Store) map[int]int {
-	out := map[int]int{}
-	if v, _ := st.Meta(store.MetaTeamRounds); v != "" {
-		json.Unmarshal([]byte(v), &out)
-	}
-	return out
 }
 
 func eventKind(st *store.Store) string {
@@ -93,9 +85,9 @@ func (m matchView) TotalHome() float64 { h, _ := m.KOTotal(); return h }
 func (m matchView) TotalAway() float64 { _, a := m.KOTotal(); return a }
 
 type roundView struct {
-	Round      int
-	FirstBoard int
-	Matches    []matchView
+	Round   int
+	Boards  int // the most boards a match of the round plays
+	Matches []matchView
 }
 
 func (s *Server) teamsEvent(w http.ResponseWriter, r *http.Request, st *store.Store, p page) {
@@ -122,11 +114,7 @@ func (s *Server) teamsEvent(w http.ResponseWriter, r *http.Request, st *store.St
 			s.fail(w, http.StatusInternalServerError, err)
 			return
 		}
-		next := 1
-		if n := len(rounds); n > 0 {
-			next = rounds[n-1].FirstBoard
-		}
-		data["Rounds"], data["NextRound"], data["NextFirst"] = rounds, ev.Round+1, next
+		data["Rounds"], data["NextRound"] = rounds, ev.Round+1
 		data["CanPair"] = allPlayed(ev)
 		data["Format"] = formatNames[setup.Format]
 		data["Groups"] = groupViews(ev)
@@ -170,13 +158,13 @@ func roundViews(st *store.Store, ev *teams.Event, entries []store.Entry) ([]roun
 		}
 		done[k][b.Board][b.Room] = true
 	}
-	firsts := firstBoards(st)
 	var out []roundView
 	for _, m := range ev.Matches {
 		if len(out) == 0 || out[len(out)-1].Round != m.Round {
-			out = append(out, roundView{Round: m.Round, FirstBoard: max(firsts[m.Round], 1)})
+			out = append(out, roundView{Round: m.Round})
 		}
 		rv := &out[len(out)-1]
+		rv.Boards = max(rv.Boards, m.Boards)
 		mv := matchView{Match: m, HomeName: teamName(byID[int64(m.Home)]), AwayName: teamName(byID[int64(m.Away)])}
 		if m.Group != "" {
 			mv.GroupLabel = groupLabel(m.Group)
@@ -318,10 +306,9 @@ func (s *Server) pairTeams(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusBadRequest, errors.New("състезанието не е започнало"))
 		return
 	}
-	boards, err1 := strconv.Atoi(r.PostFormValue("boards"))
-	first, err2 := strconv.Atoi(r.PostFormValue("first"))
-	if err1 != nil || err2 != nil || boards < 1 || boards > 64 || first < 1 || first+boards-1 > 128 {
-		s.fail(w, http.StatusBadRequest, errors.New("невалиден брой раздавания или първо раздаване"))
+	boards, err := strconv.Atoi(r.PostFormValue("boards"))
+	if err != nil || boards < 1 || boards > 64 {
+		s.fail(w, http.StatusBadRequest, errors.New("невалиден брой раздавания"))
 		return
 	}
 	per := map[string]int{}
@@ -337,13 +324,6 @@ func (s *Server) pairTeams(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := ev.PairRoundBoards(boards, per); err != nil {
 		s.fail(w, http.StatusBadRequest, fmt.Errorf("рундът не може да се чифтоса: %w", err))
-		return
-	}
-	firsts := firstBoards(st)
-	firsts[ev.Round] = first
-	b, _ := json.Marshal(firsts)
-	if err := st.SetMeta(store.MetaTeamRounds, string(b)); err != nil {
-		s.fail(w, http.StatusInternalServerError, err)
 		return
 	}
 	if err := st.SaveTeams(ev); err != nil {
@@ -363,6 +343,7 @@ type roomEntry struct {
 
 type boardRow struct {
 	Board            int
+	Entered          bool // something is stored under this board number
 	Dealer, Vul      string
 	Open, Closed     roomEntry
 	AdjHome, AdjAway string
@@ -408,7 +389,7 @@ func (s *Server) loadMatch(w http.ResponseWriter, r *http.Request) (*store.Store
 					s.fail(w, http.StatusInternalServerError, err)
 					return nil, p, nil, nil, false
 				}
-				md.fill(rv.FirstBoard, boards)
+				md.fill(boards)
 				return st, p, ev, md, true
 			}
 		}
@@ -417,16 +398,36 @@ func (s *Server) loadMatch(w http.ResponseWriter, r *http.Request) (*store.Store
 	return nil, p, nil, nil, false
 }
 
-// fill makes the match's board rows from what was entered, and its totals.
-func (md *matchData) fill(first int, boards []store.TeamBoard) {
+// fill makes the match's board rows from what was entered, and its totals. The board numbers are the
+// table's: whatever the two rooms played (they play the same boards), in order, and empty rows up to
+// the match's number of boards, numbered on from the last one.
+func (md *matchData) fill(boards []store.TeamBoard) {
 	have := map[[2]any]store.TeamBoard{}
+	seen := map[int]bool{}
+	var nums []int
 	for _, b := range boards {
 		if b.Home == int(md.Match.Home) && b.Away == int(md.Match.Away) {
 			have[[2]any{b.Board, b.Room}] = b
+			if !seen[b.Board] {
+				seen[b.Board] = true
+				nums = append(nums, b.Board)
+			}
 		}
 	}
+	sort.Ints(nums)
+	next := 1
+	if len(nums) > 0 {
+		next = nums[len(nums)-1] + 1
+	}
+	for len(nums) < md.Match.Boards {
+		for seen[next] {
+			next++
+		}
+		seen[next] = true
+		nums = append(nums, next)
+	}
 	md.Rows = nil
-	for n := first; n < first+md.Match.Boards; n++ {
+	for _, n := range nums {
 		row := boardRow{Board: n, Vul: [...]string{"Никой", "СЮ", "ИЗ", "Всички"}[score.BoardVulnerability(n)],
 			Dealer: [...]string{"С", "И", "Ю", "З"}[score.BoardDealer(n)]}
 		for _, x := range []struct {
@@ -434,6 +435,7 @@ func (md *matchData) fill(first int, boards []store.TeamBoard) {
 			e    *roomEntry
 		}{{store.RoomOpen, &row.Open}, {store.RoomClosed, &row.Closed}} {
 			if b, ok := have[[2]any{n, x.room}]; ok {
+				row.Entered = true
 				x.e.Contract, x.e.Declarer = b.Contract, b.Declarer
 				sc := b.Score
 				x.e.Score = &sc
@@ -443,6 +445,7 @@ func (md *matchData) fill(first int, boards []store.TeamBoard) {
 			}
 		}
 		if b, ok := have[[2]any{n, store.RoomAdj}]; ok && b.AdjHome != nil {
+			row.Entered = true
 			row.AdjHome, row.AdjAway = num(*b.AdjHome), num(*b.AdjAway)
 		}
 		md.Rows = append(md.Rows, row)
@@ -455,6 +458,7 @@ func num(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 // total works out each board's IMPs and the match's.
 func (md *matchData) total() {
 	md.IMPsHome, md.IMPsAway, md.Complete = 0, 0, true
+	done := 0
 	for i := range md.Rows {
 		row := &md.Rows[i]
 		row.IMPHome, row.IMPAway = nil, nil
@@ -470,10 +474,12 @@ func (md *matchData) total() {
 			md.Complete = false
 			continue
 		}
+		done++
 		row.IMPHome, row.IMPAway = &h, &a
 		md.IMPsHome += h
 		md.IMPsAway += a
 	}
+	md.Complete = md.Complete && done == md.Match.Boards
 	if md.Complete {
 		md.VPHome, md.VPAway = score.MatchVP(score.WBF20{}, md.IMPsHome-md.IMPsAway, md.Match.Boards)
 	}
@@ -513,9 +519,40 @@ func (s *Server) saveTeamMatch(w http.ResponseWriter, r *http.Request) {
 	key := func(b int, room string) store.TeamBoard {
 		return store.TeamBoard{Round: md.Round, Home: int(md.Match.Home), Away: int(md.Match.Away), Room: room, Board: b}
 	}
+	home, away := int(md.Match.Home), int(md.Match.Away)
+	// the board numbers first: the table played whichever boards it got; a renumbered row moves
+	used := map[int]bool{}
+	for i := range md.Rows {
+		row := &md.Rows[i]
+		n, err := row.Board, error(nil)
+		if v := strings.TrimSpace(r.PostFormValue("b" + strconv.Itoa(i))); v != "" {
+			n, err = strconv.Atoi(v)
+		}
+		switch {
+		case err != nil || n < 1 || n > 999:
+			row.Err, bad = "номерът на раздаването е от 1 до 999", true
+		case used[n]:
+			row.Err, bad = fmt.Sprintf("раздаване %d е два пъти", n), true
+		}
+		used[n] = true
+		if row.Err == "" && n != row.Board {
+			if row.Entered {
+				for _, room := range []string{store.RoomOpen, store.RoomClosed, store.RoomAdj} {
+					if err := st.DeleteTeamBoard(md.Round, home, away, room, row.Board); err != nil {
+						s.fail(w, http.StatusInternalServerError, err)
+						return
+					}
+				}
+			}
+			row.Board = n
+		}
+	}
 	for i := range md.Rows {
 		row := &md.Rows[i]
 		k := strconv.Itoa(i)
+		if row.Err != "" {
+			continue
+		}
 		for _, x := range []struct {
 			room, f string
 			e       *roomEntry
@@ -570,7 +607,7 @@ func (s *Server) saveTeamMatch(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusInternalServerError, err)
 		return
 	}
-	md.fill(md.Rows[0].Board, boards)
+	md.fill(boards)
 	if err := recordMatch(st, ev, md); err != nil {
 		s.fail(w, http.StatusBadRequest, err)
 		return
@@ -705,14 +742,31 @@ func (s *Server) teamsUsebio(w http.ResponseWriter, r *http.Request) {
 			out.Teams = append(out.Teams, t)
 		}
 	}
-	firsts := firstBoards(st)
+	// a match's boards: the lowest and highest number its tables played
+	all, err := st.TeamBoards(0)
+	if err != nil {
+		s.fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	span := map[[3]int][2]int{}
+	for _, b := range all {
+		k := [3]int{b.Round, b.Home, b.Away}
+		x, ok := span[k]
+		if !ok {
+			x = [2]int{b.Board, b.Board}
+		}
+		span[k] = [2]int{min(x[0], b.Board), max(x[1], b.Board)}
+	}
 	for _, m := range ev.Matches {
 		if m.Bye() {
 			continue
 		}
-		f := max(firsts[m.Round], 1)
+		x, ok := span[[3]int{m.Round, int(m.Home), int(m.Away)}]
+		if !ok {
+			x = [2]int{1, m.Boards}
+		}
 		out.Matches = append(out.Matches, usebio.Match{Played: m.Played, Round: m.Round, Home: int(m.Home), Away: int(m.Away),
-			FirstBoard: f, LastBoard: f + m.Boards - 1, IMPsHome: m.IMPsHome, IMPsAway: m.IMPsAway, VPHome: m.VPHome, VPAway: m.VPAway})
+			FirstBoard: x[0], LastBoard: x[1], IMPsHome: m.IMPsHome, IMPsAway: m.IMPsAway, VPHome: m.VPHome, VPAway: m.VPAway})
 	}
 	var buf bytes.Buffer
 	if err := usebio.WriteTeams(&buf, out); err != nil {

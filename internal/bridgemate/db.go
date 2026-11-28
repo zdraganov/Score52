@@ -99,6 +99,24 @@ func Write(db *sql.DB, s Setup, computer string) error {
 			return fmt.Errorf("player %s: %w", p.Number, err)
 		}
 	}
+	if len(s.Settings) > 0 {
+		if _, err := db.Exec("DELETE FROM [Settings]"); err != nil {
+			return fmt.Errorf("clearing Settings: %w", err)
+		}
+		cols, marks, vals := []string{"[Section]"}, []string{"?"}, []any{0}
+		for _, x := range s.Settings {
+			if hasColumn(db, "Settings", x.Column) {
+				cols, marks, vals = append(cols, "["+x.Column+"]"), append(marks, "?"), append(vals, x.Value)
+			}
+		}
+		q := fmt.Sprintf("INSERT INTO [Settings] (%s) VALUES (%s)", strings.Join(cols, ", "), strings.Join(marks, ", "))
+		for _, x := range s.Sections {
+			vals[0] = x.ID
+			if _, err := db.Exec(q, vals...); err != nil {
+				return fmt.Errorf("settings of section %s: %w", x.Letter, err)
+			}
+		}
+	}
 	if hasColumn(db, "PlayerNames", "strID") {
 		if _, err := db.Exec("DELETE FROM [PlayerNames]"); err != nil {
 			return fmt.Errorf("clearing PlayerNames: %w", err)

@@ -187,24 +187,29 @@ func TestParseErrors(t *testing.T) {
 // then results of both rooms read back by section and table.
 func TestTeamsRound(t *testing.T) {
 	ms := []TeamMatch{
-		{Table: 1, Home: 3, Away: 5, Boards: 8, Open: [4]Player{{"101", "Иван Петров"}, {"102", "Петя"}, {"", "Гост 1"}, {"", "Гост 2"}}},
-		{Table: 2, Home: 1, Away: 4, Boards: 8},
+		{Table: 1, Home: 3, Away: 5, Open: [4]Player{{"101", "Иван Петров"}, {"102", "Петя"}, {"", "Гост 1"}, {"", "Гост 2"}}},
+		{Table: 2, Home: 1, Away: 4},
 	}
-	s, err := TeamsSetup("Отборно, рунд 2", time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC), 9, ms)
+	s, err := TeamsSetup("Отборно, рунд 2", time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC), 2, 32, ms)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(s.Sections) != 2 || s.Sections[0].Scoring != ScoringTeams || len(s.Tables) != 4 || len(s.Players) != 4 {
 		t.Fatalf("setup: %+v", s)
 	}
+	var played []RoundRow
 	for _, r := range s.Rounds {
-		if r.Round != 1 || r.LowBoard != 9 || r.HighBoard != 16 {
+		switch {
+		case r.Round == 1 && r.NS == 0 && r.LowBoard == 0: // round 1 left empty
+		case r.Round == 2 && r.LowBoard == 1 && r.HighBoard == 32:
+			played = append(played, r)
+		default:
 			t.Errorf("round row %+v", r)
 		}
 	}
 	// match 1: open room NS = home 3, closed room NS = away 5
-	if s.Rounds[0].NS != 3 || s.Rounds[0].EW != 5 || s.Rounds[1].Section != SectionClosed || s.Rounds[1].NS != 5 || s.Rounds[1].EW != 3 {
-		t.Errorf("rooms: %+v %+v", s.Rounds[0], s.Rounds[1])
+	if len(played) != 4 || played[0].NS != 3 || played[0].EW != 5 || played[1].Section != SectionClosed || played[1].NS != 5 || played[1].EW != 3 {
+		t.Errorf("rooms: %+v", played)
 	}
 	db := fakeBws(t)
 	if err := Write(db, s, "PC"); err != nil {
@@ -214,6 +219,12 @@ func TestTeamsRound(t *testing.T) {
 	db.QueryRow("SELECT count(DISTINCT [Group]) FROM [Tables]").Scan(&groups)
 	if groups != 2 {
 		t.Errorf("%d groups", groups)
+	}
+	var manual, settings int
+	var pin string
+	db.QueryRow("SELECT count(*), min([BM2FirstBoardManually]), min([BM2PINcode]) FROM [Settings]").Scan(&settings, &manual, &pin)
+	if settings != 2 || manual != 1 || pin != "0000" {
+		t.Errorf("settings: %d rows, first board manually %d, PIN %q", settings, manual, pin)
 	}
 	for _, q := range []string{
 		"INSERT INTO [ReceivedData] ([Section],[Table],[Round],[Board],[PairNS],[PairEW],[Declarer],[NS/EW],[Contract],[Result],[Erased]) VALUES (1,1,1,9,3,5,3,'N','4 S','=',0)",
