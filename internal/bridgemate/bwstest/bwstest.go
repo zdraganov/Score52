@@ -18,6 +18,7 @@ var Schema = []string{
 	"CREATE TABLE [Tables] ([Section] INTEGER, [Table] INTEGER, [ComputerID] INTEGER, [Status] INTEGER, [LogOnOff] INTEGER, [CurrentRound] INTEGER, [CurrentBoard] INTEGER, [UpdateFromRound] INTEGER, [Group] INTEGER)",
 	"CREATE TABLE [RoundData] ([Section] INTEGER, [Table] INTEGER, [Round] INTEGER, [NSPair] INTEGER, [EWPair] INTEGER, [LowBoard] INTEGER, [HighBoard] INTEGER, [CustomBoards] TEXT CHECK ([CustomBoards] IS NULL OR [CustomBoards] <> ''))",
 	"CREATE TABLE [PlayerNumbers] ([Section] INTEGER, [Table] INTEGER, [Direction] TEXT, [Number] TEXT, [Name] TEXT, [Updated] BOOLEAN, [TimeLog] DATETIME, [Processed] BOOLEAN)",
+	"CREATE TABLE [PlayerNames] ([ID] INTEGER, [Name] TEXT, [strID] TEXT)",
 	"CREATE TABLE [ReceivedData] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [Section] INTEGER, [Table] INTEGER, [Round] INTEGER, [Board] INTEGER, [PairNS] INTEGER, [PairEW] INTEGER, [Declarer] INTEGER, [NS/EW] TEXT, [Contract] TEXT, [Result] TEXT, [LeadCard] TEXT, [Remarks] TEXT, [DateLog] DATETIME, [TimeLog] DATETIME, [Processed] BOOLEAN, [Erased] BOOLEAN, [custom_ProcessedMC] BOOLEAN)",
 }
 

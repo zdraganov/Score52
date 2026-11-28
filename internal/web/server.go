@@ -114,6 +114,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /e/{id}/r/{round}/m/{home}/playoff", s.koPlayoff)
 	mux.HandleFunc("POST /e/{id}/r/{round}/bridgemate", s.bwsRound)
 	mux.HandleFunc("POST /e/{id}/r/{round}/bridgemate/results", s.bwsResults)
+	mux.HandleFunc("POST /e/{id}/s/{slot}/bridgemate", s.bwsSession)
+	mux.HandleFunc("POST /e/{id}/s/{slot}/bridgemate/results", s.bwsSessionResults)
 	return s.guard(mux)
 }
 
