@@ -74,7 +74,23 @@ type matchView struct {
 	Table              int
 	HomeName, AwayName string
 	Entered            int // boards complete
+	GroupLabel         string
 }
+
+// Winner is a decided knockout match's winner.
+func (m matchView) Winner() string {
+	h, a := m.KOTotal()
+	switch {
+	case !m.Played || m.Tied:
+		return ""
+	case m.Bye() || h > a:
+		return m.HomeName
+	}
+	return m.AwayName
+}
+
+func (m matchView) TotalHome() float64 { h, _ := m.KOTotal(); return h }
+func (m matchView) TotalAway() float64 { _, a := m.KOTotal(); return a }
 
 type roundView struct {
 	Round      int
@@ -113,6 +129,8 @@ func (s *Server) teamsEvent(w http.ResponseWriter, st *store.Store, p page) {
 		data["Rounds"], data["NextRound"], data["NextFirst"] = rounds, ev.Round+1, next
 		data["CanPair"] = allPlayed(ev)
 		data["Format"] = formatNames[setup.Format]
+		data["Groups"] = groupViews(ev)
+		data["CanChange"] = allPlayed(ev) && ev.Round > 0
 	}
 	p.Title = p.Event
 	p.Data = data
@@ -121,7 +139,7 @@ func (s *Server) teamsEvent(w http.ResponseWriter, st *store.Store, p page) {
 
 func allPlayed(ev *teams.Event) bool {
 	for _, m := range ev.Matches {
-		if !m.Played {
+		if !m.Played || m.Tied {
 			return false
 		}
 	}
@@ -156,6 +174,9 @@ func roundViews(st *store.Store, ev *teams.Event, entries []store.Entry) ([]roun
 		}
 		rv := &out[len(out)-1]
 		mv := matchView{Match: m, HomeName: teamName(byID[int64(m.Home)]), AwayName: teamName(byID[int64(m.Away)])}
+		if m.Group != "" {
+			mv.GroupLabel = groupLabel(m.Group)
+		}
 		if !m.Bye() {
 			for _, rooms := range done[[3]int{m.Round, int(m.Home), int(m.Away)}] {
 				if rooms[store.RoomAdj] || rooms[store.RoomOpen] && rooms[store.RoomClosed] {
@@ -299,7 +320,18 @@ func (s *Server) pairTeams(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusBadRequest, errors.New("невалиден брой раздавания или първо раздаване"))
 		return
 	}
-	if _, err := ev.PairRound(boards); err != nil {
+	per := map[string]int{}
+	for i, g := range ev.Groups {
+		if v := strings.TrimSpace(r.PostFormValue(fmt.Sprint("boards", i))); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 || n > 64 {
+				s.fail(w, http.StatusBadRequest, fmt.Errorf("%s: невалиден брой раздавания", groupLabel(g.Name)))
+				return
+			}
+			per[g.Name] = n
+		}
+	}
+	if _, err := ev.PairRoundBoards(boards, per); err != nil {
 		s.fail(w, http.StatusBadRequest, fmt.Errorf("рундът не може да се чифтоса: %w", err))
 		return
 	}
@@ -336,6 +368,7 @@ type boardRow struct {
 
 type matchData struct {
 	Round, Table       int
+	View               matchView
 	Match              teams.Match
 	HomeName, AwayName string
 	Rows               []boardRow
@@ -365,7 +398,7 @@ func (s *Server) loadMatch(w http.ResponseWriter, r *http.Request) (*store.Store
 	for _, rv := range rounds {
 		for _, mv := range rv.Matches {
 			if rv.Round == round && int(mv.Home) == home && !mv.Bye() {
-				md := &matchData{Round: round, Table: mv.Table, Match: mv.Match, HomeName: mv.HomeName, AwayName: mv.AwayName}
+				md := &matchData{Round: round, Table: mv.Table, View: mv, Match: mv.Match, HomeName: mv.HomeName, AwayName: mv.AwayName}
 				boards, err := st.TeamBoards(round)
 				if err != nil {
 					s.fail(w, http.StatusInternalServerError, err)
@@ -544,9 +577,16 @@ type teamRow struct {
 	Name, Players string
 	Tied          bool
 	PerRound      []*float64 // VPs in each round, nil when it didn't play (yet)
+	Out           int        // knockout: the round it went out in
 }
 
-func teamStandings(st *store.Store) (*teams.Event, []teamRow, map[int64]store.Entry, error) {
+type groupStanding struct {
+	Name, Label, Format string
+	Knockout            bool
+	Rows                []teamRow
+}
+
+func teamStandings(st *store.Store) (*teams.Event, []groupStanding, map[int64]store.Entry, error) {
 	ev, err := st.LoadTeams()
 	if err != nil || ev == nil {
 		return ev, nil, nil, err
@@ -578,23 +618,45 @@ func teamStandings(st *store.Store) (*teams.Event, []teamRow, map[int64]store.En
 			per[side.id][m.Round-1] = &v
 		}
 	}
-	var rows []teamRow
-	for _, sd := range ev.Standings("") {
-		e := byID[int64(sd.Team)]
-		row := teamRow{Standing: sd, Name: teamName(e), Players: names(e), PerRound: per[sd.Team]}
-		if row.PerRound == nil {
-			row.PerRound = make([]*float64, ev.Round)
+	outIn := map[teams.TeamID]int{}
+	for _, m := range ev.Matches {
+		if m.Knockout && m.Played && !m.Tied && !m.Bye() {
+			if h, a := m.KOTotal(); h > a {
+				outIn[m.Away] = m.Round
+			} else {
+				outIn[m.Home] = m.Round
+			}
 		}
-		rows = append(rows, row)
 	}
-	for i := range rows {
-		rows[i].Tied = i > 0 && rows[i].Rank == rows[i-1].Rank || i+1 < len(rows) && rows[i+1].Rank == rows[i].Rank
+	var groups []groupStanding
+	for _, g := range ev.Groups {
+		gs := groupStanding{Name: g.Name, Label: groupLabel(g.Name), Format: formatNames[g.Format], Knockout: g.Format == teams.Knockout}
+		ranked := ev.Standings(g.Name)
+		if gs.Knockout {
+			ranked = koRanking(ev, g.Name)
+		}
+		for _, sd := range ranked {
+			e := byID[int64(sd.Team)]
+			row := teamRow{Standing: sd, Name: teamName(e), Players: names(e), PerRound: per[sd.Team]}
+			if gs.Knockout {
+				row.Out = outIn[sd.Team]
+			}
+			if row.PerRound == nil {
+				row.PerRound = make([]*float64, ev.Round)
+			}
+			gs.Rows = append(gs.Rows, row)
+		}
+		rows := gs.Rows
+		for i := range rows {
+			rows[i].Tied = i > 0 && rows[i].Rank == rows[i-1].Rank || i+1 < len(rows) && rows[i+1].Rank == rows[i].Rank
+		}
+		groups = append(groups, gs)
 	}
-	return ev, rows, byID, nil
+	return ev, groups, byID, nil
 }
 
 func (s *Server) teamsStandings(w http.ResponseWriter, st *store.Store, p page) {
-	ev, rows, _, err := teamStandings(st)
+	ev, groups, _, err := teamStandings(st)
 	if err != nil {
 		s.fail(w, http.StatusInternalServerError, err)
 		return
@@ -608,7 +670,7 @@ func (s *Server) teamsStandings(w http.ResponseWriter, st *store.Store, p page) 
 		rounds = append(rounds, r)
 	}
 	p.Title = "Класиране – " + p.Event
-	p.Data = map[string]any{"Rows": rows, "Rounds": rounds}
+	p.Data = map[string]any{"Groups": groups, "Rounds": rounds}
 	s.render(w, "team-standings", p)
 }
 
@@ -617,7 +679,7 @@ func (s *Server) teamsUsebio(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ev, rows, byID, err := teamStandings(st)
+	ev, groups, byID, err := teamStandings(st)
 	if err != nil || ev == nil {
 		s.fail(w, http.StatusBadRequest, errors.New("състезанието не е започнало"))
 		return
@@ -625,12 +687,15 @@ func (s *Server) teamsUsebio(w http.ResponseWriter, r *http.Request) {
 	date, _ := st.Meta(store.MetaDate)
 	d, _ := time.Parse("2006-01-02", date)
 	out := usebio.TeamsEvent{Title: p.Event, Date: d}
-	for _, row := range rows {
-		t := usebio.Team{ID: int(row.Team), Name: row.Name, Place: row.Rank, Tied: row.Tied, VP: row.VP}
-		for _, pl := range byID[int64(row.Team)].Players {
-			t.Players = append(t.Players, usebio.Player{Name: pl.Name, FederationID: pl.FederationID})
+	// bridge.bg ranks group after group: A's places, then B's
+	for _, g := range groups {
+		for _, row := range g.Rows {
+			t := usebio.Team{ID: int(row.Team), Name: row.Name, Group: g.Name, Place: row.Rank, Tied: row.Tied, VP: row.VP}
+			for _, pl := range byID[int64(row.Team)].Players {
+				t.Players = append(t.Players, usebio.Player{Name: pl.Name, FederationID: pl.FederationID})
+			}
+			out.Teams = append(out.Teams, t)
 		}
-		out.Teams = append(out.Teams, t)
 	}
 	firsts := firstBoards(st)
 	for _, m := range ev.Matches {
@@ -649,4 +714,234 @@ func (s *Server) teamsUsebio(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.xml"`, fileBase(st, p.EventID)))
 	w.Write(buf.Bytes())
+}
+
+// --- groups: split, exchange, format; knockout carry-over and extra boards ---
+
+type groupView struct {
+	Name, Label, Format string
+	Teams               int
+}
+
+func groupLabel(name string) string {
+	if name == "" {
+		return "Общо"
+	}
+	return "Група " + name
+}
+
+func groupViews(ev *teams.Event) []groupView {
+	var out []groupView
+	for _, g := range ev.Groups {
+		out = append(out, groupView{Name: g.Name, Label: groupLabel(g.Name), Format: formatNames[g.Format], Teams: len(ev.Standings(g.Name))})
+	}
+	return out
+}
+
+func parseCarry(kind, pct string) (teams.Carry, error) {
+	c := teams.Carry{Kind: teams.CarryKind(kind)}
+	switch c.Kind {
+	case teams.CarryAll, teams.CarryHeadToHead:
+	case teams.CarryNone:
+		return c, nil
+	default:
+		return c, errors.New("пренасянето е: всичко, процент, нищо или от срещите помежду им")
+	}
+	pct = strings.TrimSpace(strings.ReplaceAll(pct, ",", "."))
+	if pct == "" {
+		return c, nil
+	}
+	v, err := strconv.ParseFloat(pct, 64)
+	if err != nil || v <= 0 || v > 100 {
+		return c, errors.New("процентът на пренасянето е между 0 и 100")
+	}
+	c.Fraction = v / 100
+	return c, nil
+}
+
+// teamsChange applies a change to a started event and saves it.
+func (s *Server) teamsChange(w http.ResponseWriter, r *http.Request, f func(st *store.Store, ev *teams.Event) error, back func(ev *teams.Event) string) {
+	st, p, ok := s.eventPage(w, r)
+	if !ok {
+		return
+	}
+	ev, err := st.LoadTeams()
+	if err != nil || ev == nil {
+		s.fail(w, http.StatusBadRequest, errors.New("състезанието не е започнало"))
+		return
+	}
+	if err := f(st, ev); err != nil {
+		s.fail(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := st.SaveTeams(ev); err != nil {
+		s.fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	http.Redirect(w, r, "/e/"+p.EventID+back(ev), http.StatusSeeOther)
+}
+
+func (s *Server) splitTeams(w http.ResponseWriter, r *http.Request) {
+	s.teamsChange(w, r, func(st *store.Store, ev *teams.Event) error {
+		from := r.PostFormValue("from")
+		var specs []teams.GroupSpec
+		names := map[string]bool{}
+		for k := 1; k <= 4; k++ {
+			name := strings.ToUpper(strings.TrimSpace(r.PostFormValue(fmt.Sprint("name", k))))
+			if name == "" {
+				continue
+			}
+			if names[name] || len([]rune(name)) > 3 {
+				return fmt.Errorf("група %q: имената са кратки и различни (A, B, C)", name)
+			}
+			names[name] = true
+			sp := teams.GroupSpec{Name: name, Format: teams.Format(r.PostFormValue(fmt.Sprint("format", k)))}
+			if _, ok := formatNames[sp.Format]; !ok {
+				return fmt.Errorf("група %s: няма такава система", name)
+			}
+			if v := strings.TrimSpace(r.PostFormValue(fmt.Sprint("count", k))); v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 2 {
+					return fmt.Errorf("група %s: поне 2 отбора", name)
+				}
+				sp.Count = n
+			}
+			c, err := parseCarry(r.PostFormValue(fmt.Sprint("carry", k)), r.PostFormValue(fmt.Sprint("pct", k)))
+			if err != nil {
+				return fmt.Errorf("група %s: %w", name, err)
+			}
+			sp.Carry = c
+			specs = append(specs, sp)
+		}
+		if len(specs) < 2 {
+			return errors.New("разделянето е на поне 2 групи")
+		}
+		if err := ev.Split(from, specs); err != nil {
+			return fmt.Errorf("групите не могат да се направят: %w", err)
+		}
+		return nil
+	}, func(*teams.Event) string { return "#groups" })
+}
+
+func (s *Server) exchangeTeams(w http.ResponseWriter, r *http.Request) {
+	s.teamsChange(w, r, func(st *store.Store, ev *teams.Event) error {
+		n, err := strconv.Atoi(r.PostFormValue("n"))
+		if err != nil || n < 1 {
+			return errors.New("колко отбора се разменят")
+		}
+		c, err := parseCarry(r.PostFormValue("carry"), r.PostFormValue("pct"))
+		if err != nil {
+			return err
+		}
+		if err := ev.Exchange(r.PostFormValue("upper"), r.PostFormValue("lower"), n, c); err != nil {
+			return fmt.Errorf("размяната не става: %w", err)
+		}
+		return nil
+	}, func(*teams.Event) string { return "#groups" })
+}
+
+func (s *Server) formatTeams(w http.ResponseWriter, r *http.Request) {
+	s.teamsChange(w, r, func(st *store.Store, ev *teams.Event) error {
+		f := teams.Format(r.PostFormValue("format"))
+		g := ev.Group(r.PostFormValue("group"))
+		if _, ok := formatNames[f]; !ok || g == nil {
+			return errors.New("няма такава група или система")
+		}
+		if g.Format == f {
+			return nil
+		}
+		return ev.SetFormat(g.Name, f)
+	}, func(*teams.Event) string { return "#groups" })
+}
+
+func (s *Server) koCarry(w http.ResponseWriter, r *http.Request) {
+	s.koChange(w, r, func(ev *teams.Event, m teams.Match) error {
+		h, err1 := parseIMP(r.PostFormValue("carry_home"))
+		a, err2 := parseIMP(r.PostFormValue("carry_away"))
+		if err1 != nil || err2 != nil {
+			return errors.New("пренесеното е IMP: числа, 0 или повече")
+		}
+		return ev.SetCarry(m.Round, m.Home, m.Away, h, a)
+	})
+}
+
+func (s *Server) koPlayoff(w http.ResponseWriter, r *http.Request) {
+	s.koChange(w, r, func(ev *teams.Event, m teams.Match) error {
+		b, err := strconv.Atoi(r.PostFormValue("boards"))
+		h, err1 := parseIMP(r.PostFormValue("imps_home"))
+		a, err2 := parseIMP(r.PostFormValue("imps_away"))
+		if err != nil || b < 1 || b > 8 || err1 != nil || err2 != nil {
+			return errors.New("допълнителните раздавания: брой (1-8) и IMP на всеки отбор")
+		}
+		return ev.AddPlayoff(m.Round, m.Home, m.Away, b, h, a)
+	})
+}
+
+func parseIMP(v string) (float64, error) {
+	v = strings.TrimSpace(strings.ReplaceAll(v, ",", "."))
+	if v == "" {
+		return 0, nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err == nil && (f < 0 || math.IsInf(f, 0) || math.IsNaN(f)) {
+		err = errors.New("negative")
+	}
+	return f, err
+}
+
+func (s *Server) koChange(w http.ResponseWriter, r *http.Request, f func(ev *teams.Event, m teams.Match) error) {
+	st, p, ev, md, ok := s.loadMatch(w, r)
+	if !ok {
+		return
+	}
+	if !md.Match.Knockout {
+		s.fail(w, http.StatusBadRequest, errors.New("мачът не е на директни елиминации"))
+		return
+	}
+	if err := f(ev, md.Match); err != nil {
+		s.fail(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := st.SaveTeams(ev); err != nil {
+		s.fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/e/%s/r/%d/m/%d", p.EventID, md.Round, md.Match.Home), http.StatusSeeOther)
+}
+
+// koRanking ranks a knockout group: the teams still in first, then by the round they went out in, later
+// first; teams out in the same round share the place.
+func koRanking(ev *teams.Event, group string) []teams.Standing {
+	all := ev.Standings(group)
+	out := map[teams.TeamID]int{}
+	for _, m := range ev.Matches {
+		if m.Group != group || !m.Knockout || !m.Played || m.Tied || m.Bye() {
+			continue
+		}
+		h, a := m.KOTotal()
+		if h > a {
+			out[m.Away] = m.Round
+		} else {
+			out[m.Home] = m.Round
+		}
+	}
+	key := func(s teams.Standing) int {
+		if r, ok := out[s.Team]; ok {
+			return r
+		}
+		return math.MaxInt
+	}
+	sorted := append([]teams.Standing(nil), all...)
+	for i := 1; i < len(sorted); i++ { // stable insertion: keeps the standings' order among equals
+		for j := i; j > 0 && key(sorted[j]) > key(sorted[j-1]); j-- {
+			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+		}
+	}
+	for i := range sorted {
+		sorted[i].Rank = i + 1
+		if i > 0 && key(sorted[i]) == key(sorted[i-1]) && key(sorted[i]) != math.MaxInt {
+			sorted[i].Rank = sorted[i-1].Rank
+		}
+	}
+	return sorted
 }

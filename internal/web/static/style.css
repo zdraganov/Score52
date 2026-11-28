@@ -58,3 +58,4 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
 .teamform .teamname { grid-column: 1 / -1; } .teamform button { grid-column: 1 / -1; justify-self: start; }
 .tbl tfoot th { border-top: 2px solid var(--line); color: var(--ink); }
 .tbl a { color: var(--accent); }
+details.more { margin-top: 14px; } details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-bottom: 10px; }

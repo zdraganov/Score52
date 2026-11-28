@@ -233,3 +233,34 @@ func TestKnockoutCarryAndPlayoff(t *testing.T) {
 		t.Errorf("final %+v", final[0])
 	}
 }
+
+// A knockout that has its winner sits out while the Swiss below plays on; the knockout plays more boards.
+func TestFinishedGroupSitsOut(t *testing.T) {
+	e := mustNew(t, field(10), Swiss)
+	rng := rand.New(rand.NewPCG(3, 4))
+	play(t, e, rng)
+	if err := e.Split("", []GroupSpec{{Name: "A", Count: 2, Format: Knockout}, {Name: "B", Format: Swiss, Carry: Carry{Kind: CarryAll}}}); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := e.PairRoundBoards(8, map[string]int{"A": 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms {
+		if want := map[string]int{"A": 16, "B": 8}[m.Group]; m.Boards != want {
+			t.Errorf("group %s plays %d boards", m.Group, m.Boards)
+		}
+		if !m.Bye() {
+			e.Record(m.Round, m.Home, m.Away, 30, 10)
+		}
+	}
+	ms, err = e.PairRound(8) // A's final is over: only B
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms {
+		if m.Group != "B" {
+			t.Errorf("finished group %s paired", m.Group)
+		}
+	}
+}

@@ -1,10 +1,23 @@
 package teams
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// errFinished: the group has nothing left to play (its knockout has a winner, its round robin is
+// complete); it sits the round out while the others play.
+var errFinished = errors.New("finished")
 
 // PairRound makes the next round's matches in every group and adds them to the event.
 // Every group plays the same number of boards.
 func (e *Event) PairRound(boards int) ([]Match, error) {
+	return e.PairRoundBoards(boards, nil)
+}
+
+// PairRoundBoards is PairRound with a number of boards per group where it differs from `boards`
+// (a knockout's 16 while the Swiss below plays 8).
+func (e *Event) PairRoundBoards(boards int, per map[string]int) ([]Match, error) {
 	if err := e.allPlayed(); err != nil {
 		return nil, err
 	}
@@ -12,11 +25,18 @@ func (e *Event) PairRound(boards int) ([]Match, error) {
 	round := e.Round + 1
 	for _, g := range e.Groups {
 		pairs, order, err := e.pairGroup(g)
+		if errors.Is(err, errFinished) {
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("group %s: %w", g.Name, err)
 		}
+		n := boards
+		if v, ok := per[g.Name]; ok && v > 0 {
+			n = v
+		}
 		for _, p := range pairs {
-			op.Matches = append(op.Matches, Match{Round: round, Group: g.Name, Home: p[0], Away: p[1], Boards: boards})
+			op.Matches = append(op.Matches, Match{Round: round, Group: g.Name, Home: p[0], Away: p[1], Boards: n})
 		}
 		if order != nil {
 			if op.RROrder == nil {
@@ -24,6 +44,9 @@ func (e *Event) PairRound(boards int) ([]Match, error) {
 			}
 			op.RROrder[g.Name] = order
 		}
+	}
+	if len(op.Matches) == 0 {
+		return nil, errors.New("every group has finished: nothing left to pair")
 	}
 	if err := e.apply(op); err != nil {
 		return nil, err
@@ -191,7 +214,7 @@ func (e *Event) roundRobin(g *Group, ranked []TeamID) ([][2]TeamID, []TeamID, er
 	n := len(order)
 	r := g.rrRound
 	if r >= n-1 {
-		return nil, nil, fmt.Errorf("the round robin is complete (%d rounds)", n-1)
+		return nil, nil, fmt.Errorf("the round robin is complete (%d rounds): %w", n-1, errFinished)
 	}
 	var out [][2]TeamID
 	// position 0 fixed, the others rotate
@@ -262,7 +285,7 @@ func (e *Event) knockout(g *Group, ranked []TeamID) ([][2]TeamID, error) {
 		winners = append(winners, w)
 	}
 	if len(winners) < 2 {
-		return nil, fmt.Errorf("the knockout is over")
+		return nil, fmt.Errorf("the knockout is over: %w", errFinished)
 	}
 	var out [][2]TeamID
 	for i := 0; i+1 < len(winners); i += 2 {
