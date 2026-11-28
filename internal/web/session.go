@@ -370,7 +370,8 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		side = append(side, label+strings.Join(ss, ", "))
 	}
 	sort.Strings(side)
-	p.Data = map[string]any{"S": d, "Plans": plans, "Done": done, "Side": side}
+	p.Data = map[string]any{"S": d, "Plans": plans, "Done": done, "Side": side, "Bridgemate": s.bws != nil,
+		"HasBws": s.bws != nil && fileExists(s.sessionBws(p.EventID, d.Slot)), "BMNote": bmNote(r.URL.Query(), s.sessionBws(p.EventID, d.Slot))}
 	s.render(w, "session", p)
 }
 
@@ -511,6 +512,12 @@ func (s *Server) saveTraveller(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := travRows(d, board)
+	have := map[[2]int]store.Result{}
+	for _, res := range d.Results {
+		if res.Board == board {
+			have[[2]int{res.NS, res.EW}] = res
+		}
+	}
 	bad := false
 	for i := range rows {
 		row := &rows[i]
@@ -525,9 +532,13 @@ func (s *Server) saveTraveller(w http.ResponseWriter, r *http.Request) {
 			row.Err, bad = err.Error(), true
 			continue
 		}
-		if del {
+		old, had := have[[2]int{row.NS, row.EW}]
+		switch {
+		case del && !had, !del && had && sameResult(old, res):
+			continue // unchanged: a line from BridgeMate stays one, with its lead
+		case del:
 			err = st.DeleteResult(d.ID, board, row.NS, row.EW)
-		} else {
+		default:
 			res.Round, res.Table = row.Round, row.Table
 			err = st.PutResult(d.ID, res)
 		}

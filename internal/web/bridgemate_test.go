@@ -2,6 +2,7 @@ package web
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -113,5 +114,124 @@ func TestBridgemateNeedsWindows(t *testing.T) {
 	page, _ := c.post(ev+"/teams/pair", url.Values{"boards": {"2"}, "first": {"1"}})
 	if !strings.Contains(page, "само под Windows") || strings.Contains(page, "Създай файла за BridgeMate") {
 		t.Error("BridgeMate offered without a host")
+	}
+}
+
+// A pairs session in two sections: one file, BCS's sections A and B numbered from 1 each, the names
+// at the first-round tables and every player by number; results come back into the travellers.
+func TestSessionBridgemate(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	host := &fakeHost{}
+	s.SetBridgemate(host)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	c := &client{t: t, base: ts.URL, http: &http.Client{}, token: s.token}
+	_, ev := c.post("/events", url.Values{"title": {"51 двойки"}, "date": {"2026-11-30"}})
+	for i := 1; i <= 51; i++ {
+		c.post(ev+"/pairs", url.Values{"name1": {fmt.Sprint("Първи ", i)}, "ibn1": {fmt.Sprint(1000 + 2*i)},
+			"name2": {fmt.Sprint("Втори ", i)}, "ibn2": {fmt.Sprint(1001 + 2*i)}})
+	}
+	plan, sess := c.post(ev+"/sessions", url.Values{"kind": {"sections"}, "sections": {"M13/25,M13/26"}, "rounds": {"13"}, "bpr": {"2"}, "method": {"mp"}})
+	if !strings.Contains(plan, "Създай файла за BridgeMate") {
+		t.Fatal("no BridgeMate on the session")
+	}
+	page, _ := c.post(sess+"/bridgemate", url.Values{"start": {"1"}})
+	bws := filepath.Join(dir, strings.TrimPrefix(ev, "/e/")+"-s1.bws")
+	if len(host.started) != 1 || host.started[0] != bws || !strings.Contains(page, "BCS е пуснат") {
+		t.Fatalf("started %v", host.started)
+	}
+	db, _ := bwstest.Open(bws)
+	defer db.Close()
+	count := func(q string, args ...any) (n int) {
+		t.Helper()
+		if err := db.QueryRow(q, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := count("SELECT count(*) FROM [Section]"); n != 2 {
+		t.Fatalf("%d sections", n)
+	}
+	var letter string
+	var missing, tables int
+	db.QueryRow("SELECT [Letter], [MissingPair], [Tables] FROM [Section] WHERE [ID] = 1").Scan(&letter, &missing, &tables)
+	if letter != "A" || missing == 0 || tables != 13 {
+		t.Errorf("section A: %s, missing pair %d, %d tables", letter, missing, tables)
+	}
+	if n := count("SELECT max([Table]) FROM [Tables] WHERE [Section] = 2"); n != 13 {
+		t.Errorf("section B's tables go up to %d", n)
+	}
+	if n := count("SELECT max([NSPair]) + max([EWPair]) FROM [RoundData] WHERE [Section] = 2"); n > 52 {
+		t.Errorf("section B's pairs aren't numbered from 1 (%d)", n)
+	}
+	if n := count("SELECT count(*) FROM [PlayerNumbers]"); n != 102 {
+		t.Errorf("%d names at the tables, want 102", n)
+	}
+	if n := count("SELECT count(*) FROM [PlayerNames] WHERE [ID] = 1003 AND [strID] = '1003' AND [Name] = 'Втори 1'"); n != 1 {
+		t.Error("no PlayerNames row for 1003")
+	}
+	if n := count("SELECT count(*) FROM [PlayerNames]"); n != 102 {
+		t.Errorf("%d names by number", n)
+	}
+
+	// section B, table 1, round 1: its pairs and first board
+	var ns, ew, low int
+	db.QueryRow("SELECT [NSPair], [EWPair], [LowBoard] FROM [RoundData] WHERE [Section] = 2 AND [Table] = 1 AND [Round] = 1").Scan(&ns, &ew, &low)
+	add := func(board int, decl, contract, result, remarks string, erased bool) {
+		t.Helper()
+		if _, err := db.Exec("INSERT INTO [ReceivedData] ([Section],[Table],[Round],[Board],[PairNS],[PairEW],[Declarer],[NS/EW],[Contract],[Result],[LeadCard],[Remarks],[Erased]) VALUES (2,1,1,?,?,?,?,?,?,?,'SA',?,?)",
+			board, ns, ew, ns, decl, contract, result, remarks, erased); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(want string) {
+		t.Helper()
+		page, _ := c.post(sess+"/bridgemate/results", url.Values{})
+		if !strings.Contains(page, want) {
+			t.Fatalf("want %q: %s", want, regexp.MustCompile(`(?s)<p class="alert">.*?</p>`).FindString(page))
+		}
+	}
+	add(low, "N", "4 S", "=", "", false)
+	add(low+1, "", "", "", "60-40", false)
+	add(low+1, "", "", "", "Not played", false) // re-entered: the latest counts
+	read("1 резултата взети; 0 поправени тук остават както са; 1 чакат")
+	trav := fmt.Sprintf("%s/b/%d", sess, low)
+	tp, _ := c.get(trav)
+	if !strings.Contains(tp, `value="4S"`) {
+		t.Fatal("4S from BridgeMate isn't on the traveller")
+	}
+	// saving the traveller unchanged leaves the line BridgeMate's: a new result from the table replaces it
+	form := url.Values{}
+	for _, m := range regexp.MustCompile(`name="([cr]\d+)" value="([^"]*)"`).FindAllStringSubmatch(tp, -1) {
+		form.Set(m[1], m[2])
+	}
+	i := regexp.MustCompile(`name="c(\d+)" value="4S"`).FindStringSubmatch(tp)[1]
+	form.Set("d"+i, "N")
+	c.post(trav, form)
+	add(low, "N", "4 S", "+1", "", false)
+	read("1 резултата взети; 0 поправени")
+	// the director's correction stays
+	form.Set("r"+i, "-1")
+	c.post(trav, form)
+	add(low, "N", "4 S", "+2", "", false)
+	read("0 резултата взети; 1 поправени тук остават")
+	if tp, _ = c.get(trav); !strings.Contains(tp, `value="-1"`) {
+		t.Error("BridgeMate overwrote the correction")
+	}
+	// erased on the Bridgemate: a line from BridgeMate goes
+	form.Set("c"+i, "")
+	form.Set("r"+i, "")
+	form.Del("d" + i)
+	c.post(trav, form) // the director clears it: BridgeMate gives it back
+	read("1 резултата взети")
+	add(low, "", "", "", "", true)
+	read("0 резултата взети")
+	if tp, _ = c.get(trav); strings.Contains(tp, `value="4S"`) {
+		t.Error("the erased result is still on the traveller")
 	}
 }

@@ -127,14 +127,35 @@ As Magic Contest lays them out (its teams `.bws`, dumped 2026-11-28), and as Sco
   the teams' own numbers (their seeds): at A the home team NS and the away team EW, at B the other way
   round, so the Bridgemates show the team numbers. Results are matched by section and table, not by
   pair number.
-- No player names are preloaded: a team's line-up changes from round to round. Magic Contest sets
-  `Settings.BM2NumberEntryEachRound` so players enter their numbers every round.
+- No names at the tables: a team's line-up changes from round to round. Magic Contest sets
+  `Settings.BM2NumberEntryEachRound` so players enter their numbers every round. Score52 fills
+  `PlayerNames` with every player of the event who has a federation number, so the entered number
+  shows the player's name.
 - Reading: section 1 → open room, 2 → closed room, table → match. A board the director entered or
   corrected in Score52 is not overwritten; a result erased on a Bridgemate is removed. Adjusted,
   "not played" and "arbitral" results are counted for the director, who enters them as IMPs.
 
+## Pairs sessions
+
+- **One `.bws` per session** (`<event>-<slot>.bws`, e.g. `2026-12-07-1-s1.bws`), written from the session page.
+- A session played in sections (`movement.Combine`) keeps them: Score52's section k is BCS section k+1
+  with its letter, and its tables and pairs are numbered from 1 as the players see them ("B3" is table
+  3 of section B). The section's phantom is its `MissingPair`, in the section's own numbering.
+- `PlayerNumbers`: the two players of each pair at its first-round table (round 0). `PlayerNames`:
+  every player of the event with a federation number (`ID` when it is a number, `strID` always, `Name`
+  ≤18), so a substitute or a player at the wrong table still sees a name after entering a number.
+- Reading: BCS's section and table give the movement's table, the round gives the seat, so the pairs
+  are the movement's (not the numbers the Bridgemate sent). A line the director entered or corrected
+  in Score52 is not overwritten (saving a traveller unchanged leaves a line BridgeMate's); a result
+  erased on a Bridgemate, or replaced by "not played", is removed. Adjusted percentages are taken in
+  MP sessions; in IMP sessions they, "not played" and "arbitral" wait for the director.
+
 ## Checked in the VM (2026-11-27)
 
+- **Pairs in sections, end to end (2026-11-28)**: 51 pairs in sections M13/25 + M13/26. Score52 made the
+  session's `.bws` and started BCS, which showed sections A and B with 13 tables each. `PlayerNames` had
+  the 102 players. Two results written into `ReceivedData` while BCS had the file open (B1 round 1 4♠=,
+  A2 round 1 3NT+1) came back on the travellers of boards 1 and 3.
 In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
 `C:\Program Files (x86)\Bridgemate Pro\BMPro.exe`, Magic Contest):
 
@@ -175,7 +196,10 @@ In `../bridge.bg/tools/magic-vm` (Windows 11 ARM, BCS 4.3.8 at
 
 ## Still open
 
-1. Bundle Bridgemate's template or build our own empty Access file: check the template's licence.
+1. Bundle Bridgemate's template or build our own empty Access file. The template is published at
+   bridgemate.com/resources/developer without any licence, and BCS installs no copy of its own. The
+   Access driver can create an empty `.mdb` (`SQLConfigDataSource` with `CREATE_DB`), then
+   `CREATE TABLE` for the tables BCS reads. That needs the template's whole schema, checked in BCS.
 2. Open a Score52-made file in BCS (`/f:[...]`, then `/s /r`). BCS seems to run as a single
    instance: a second launch while it is open on another file did nothing.
 3. Real hardware `ReceivedData` rows (adjusted scores, wrong direction, erased) from an event's file.

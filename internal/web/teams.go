@@ -133,16 +133,7 @@ func (s *Server) teamsEvent(w http.ResponseWriter, r *http.Request, st *store.St
 		data["Bridgemate"] = s.bws != nil
 		data["CurrentRound"] = ev.Round
 		data["HasBws"] = ev.Round > 0 && s.bws != nil && fileExists(s.roundBws(p.EventID, ev.Round))
-		q := r.URL.Query()
-		switch q.Get("bm") {
-		case "file":
-			data["BMNote"] = "Файлът за BridgeMate е готов: " + s.roundBws(p.EventID, ev.Round)
-		case "started":
-			data["BMNote"] = "BCS е пуснат на файла на рунда."
-		case "read":
-			data["BMNote"] = fmt.Sprintf("От BridgeMate: %s резултата взети; %s поправени тук остават както са; %s чакат съдията (присъдени, неизиграни или нечетими).",
-				q.Get("taken"), q.Get("kept"), q.Get("pending"))
-		}
+		data["BMNote"] = bmNote(r.URL.Query(), s.roundBws(p.EventID, ev.Round))
 		data["CanChange"] = allPlayed(ev) && ev.Round > 0
 	}
 	p.Title = p.Event

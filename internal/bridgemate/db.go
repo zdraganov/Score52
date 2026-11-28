@@ -27,8 +27,9 @@ func hasColumn(db *sql.DB, table, column string) bool {
 }
 
 // Write puts a setup into a .bws made from the template: the client computer, the session,
-// sections, tables, rounds and player names. Section, Tables and RoundData are emptied first, so
-// a changed movement is written the same way (BCS then needs UpdateFromRound, see docs).
+// sections, tables, rounds, the names at the tables and the names by number (PlayerNames).
+// Section, Tables and RoundData are emptied first, so a changed movement is written the same way
+// (BCS then needs UpdateFromRound, see docs).
 func Write(db *sql.DB, s Setup, computer string) error {
 	for _, c := range columnsAdded {
 		if !hasColumn(db, c.table, c.column) {
@@ -96,6 +97,20 @@ func Write(db *sql.DB, s Setup, computer string) error {
 		if _, err := db.Exec("INSERT INTO [PlayerNumbers] ([Section], [Table], [Direction], [Number], [Name], [Round], [Updated], [EntrySource]) VALUES (?, ?, ?, ?, ?, 0, ?, 0)",
 			p.Section, p.Table, p.Direction, p.Number, p.Name, true); err != nil {
 			return fmt.Errorf("player %s: %w", p.Number, err)
+		}
+	}
+	if hasColumn(db, "PlayerNames", "strID") {
+		if _, err := db.Exec("DELETE FROM [PlayerNames]"); err != nil {
+			return fmt.Errorf("clearing PlayerNames: %w", err)
+		}
+	}
+	for _, n := range s.Names {
+		var id any
+		if n.ID > 0 {
+			id = n.ID
+		}
+		if _, err := db.Exec("INSERT INTO [PlayerNames] ([ID], [strID], [Name]) VALUES (?, ?, ?)", id, n.StrID, n.Name); err != nil {
+			return fmt.Errorf("player name %s: %w", n.StrID, err)
 		}
 	}
 	return nil
